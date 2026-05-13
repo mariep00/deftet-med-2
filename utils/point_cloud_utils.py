@@ -56,9 +56,10 @@ def hausdorff_distance(mesh_a_v, mesh_a_f, mesh_b_v, mesh_b_f, pts_a, pts_b):
 
     max_distance = (torch.max(torch.sqrt(squared_distances_a + esp)) + torch.max(torch.sqrt(squared_distances_b + esp))) /2
     if torch.isnan(avg_distance).any():
-        import ipdb
-        ipdb.set_trace()
-        print('find nan')
+        print("hausdorff_distance: avg_distance is NaN")
+        #import ipdb
+        #ipdb.set_trace()
+        #print('find nan') TODO
     return avg_distance, max_distance
 
 

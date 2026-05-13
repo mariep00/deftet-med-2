@@ -173,6 +173,29 @@ def save_tetrahedron(point_px3, tetrahedron_fx4, f_name):
             all_str += 'f %d %d %d\n' % (tetrahedron[3], tetrahedron[1], tetrahedron[2])
         f.write(all_str)
 
+def save_tet_npz(out_path, vertices, tets):
+    """
+    Save tetrahedral mesh as a compressed NumPy archive (.npz).
+
+    Inputs
+    ------
+    out_path : str
+        Path to output .npz file
+    vertices : (N,3) torch.Tensor or np.ndarray
+        Vertex coordinates
+    tets : (F,4) torch.Tensor or np.ndarray
+        Tetra connectivity (0-based indexing)
+    """
+    if torch.is_tensor(vertices):
+        vertices = vertices.detach().cpu().numpy()
+    if torch.is_tensor(tets):
+        tets = tets.detach().cpu().numpy()
+
+    vertices = np.asarray(vertices, dtype=np.float32)
+    tets = np.asarray(tets, dtype=np.int32)
+
+    np.savez(out_path, vertices=vertices, tets=tets)
+
 
 def cross_dot(a, b):
     normal = np.zeros(3)

@@ -38,7 +38,7 @@ OPTIONS = {
     ),
     'dataset_dir': Option(
         type=str,
-        value='/root/dataset',
+        value='/work3/s233736/datasets/mesh_surfaces',
         help=''
     ),
     'use_all': Option(

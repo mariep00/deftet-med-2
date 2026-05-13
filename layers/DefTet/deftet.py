@@ -48,7 +48,7 @@ class DefTet(nn.Module):
             occupancy = torch.cat(occupancy, dim=0).float()
         return occupancy
 
-    def forward_surface_align(self,
+    '''def forward_surface_align(self,
                               vertice_pos,
                               point_pos_bxpx3,
                               tetrahedron_bxfx4=None,
@@ -127,7 +127,163 @@ class DefTet(nn.Module):
                     sum_analytic_distance,
                     sum_normal_loss,
                     center_occ,
-                    boundary, sum_chamfer_distance, lap_v_loss)
+                    boundary, sum_chamfer_distance, lap_v_loss)'''
+    
+    def forward_surface_align(self,
+                            vertice_pos,
+                            point_pos_bxpx3,
+                            tetrahedron_bxfx4=None,
+                            mesh_list=None,
+                            gt_surface_points=None,
+                            tet_face_bxfx3=None,
+                            inference=False,
+                            pred_occ=None,
+                            tet_face_tet_bx4fx2=None,
+                            save=False,
+                            save_name=None,
+                            inference_threshold=0.4):
+        tetrahedron_bxfx4 = tetrahedron_bxfx4.long()
+
+        tet_bxfx4x3 = torch.gather(
+            input=vertice_pos.unsqueeze(2).expand(
+                -1, -1, tetrahedron_bxfx4.shape[-1], -1
+            ),
+            index=tetrahedron_bxfx4.unsqueeze(-1).expand(
+                -1, -1, -1, vertice_pos.shape[-1]
+            ),
+            dim=1
+        )
+
+        has_gt_mesh = mesh_list is not None
+
+        volume_variance = self.volume_variance(tet_bxfx4x3, pow=self.pow)
+        amips_energy = self.amips_energy(
+            tet_bxfx4x3,
+            self.inverse_v.clone().to(tet_bxfx4x3.device),
+            center_occ=None
+        )
+        edge = self.edge_length(tet_bxfx4x3, pow=self.pow)
+
+        # Default dummy metric values for inference without GT mesh.
+        sum_chamfer_distance = torch.zeros(
+            vertice_pos.shape[0],
+            device=vertice_pos.device,
+            dtype=vertice_pos.dtype
+        )
+        sum_analytic_distance = torch.zeros(
+            vertice_pos.shape[0],
+            device=vertice_pos.device,
+            dtype=vertice_pos.dtype
+        )
+        sum_normal_loss = torch.zeros(
+            vertice_pos.shape[0],
+            device=vertice_pos.device,
+            dtype=vertice_pos.dtype
+        )
+        lap_v_loss = torch.zeros_like(sum_normal_loss)
+
+        if has_gt_mesh:
+            center_occ = self.check_tet_inside_sdfs(tet_bxfx4x3, mesh_list)
+
+            boundary = self.get_boundary_index(
+                tet_face_bxfx3[0],
+                tet_face_tet_bx4fx2[0],
+                center_occ.squeeze(dim=-1)
+            )
+
+            if save:
+                for idx, f in enumerate(boundary):
+                    if idx > 4:
+                        break
+
+                    f = torch.gather(
+                        input=vertice_pos[idx].unsqueeze(dim=-2).expand(-1, 3, -1),
+                        index=boundary[idx].unsqueeze(dim=-1).expand(-1, -1, 3),
+                        dim=0
+                    )
+
+                    mesh_utils.save_tet_face(
+                        f.data.cpu().numpy(),
+                        save_name + '_device_%d_%d.obj' % (
+                            torch.cuda.current_device(),
+                            idx
+                        )
+                    )
+
+            if gt_surface_points is not None:
+                sum_chamfer_distance = 0.0
+                sum_analytic_distance = 0.0
+                sum_normal_loss = 0.0
+
+                for i in range(vertice_pos.shape[0]):
+                    chamfer_distance, analytic_distance, normal_loss = self.forward(
+                        v_pos_bxnx3=vertice_pos[i:i + 1],
+                        tet_bxfx4=tetrahedron_bxfx4[i:i + 1],
+                        boundary_bxfx3=boundary[i].unsqueeze(dim=0),
+                        gt_surface_point=gt_surface_points[i:i + 1],
+                        inverse_offset=self.inverse_v,
+                        tet_bxfx4x3=tet_bxfx4x3[i:i + 1],
+                        calculate_amips_volume=False
+                    )
+
+                    sum_chamfer_distance += chamfer_distance / vertice_pos.shape[0]
+                    sum_analytic_distance += analytic_distance / vertice_pos.shape[0]
+                    sum_normal_loss += normal_loss / vertice_pos.shape[0]
+
+            center_occ = center_occ.squeeze(-1)
+
+        else:
+            # No GT mesh available.
+            # This is the MRI inference path.
+            center_occ = None
+            boundary = None
+
+        if inference:
+            assert point_pos_bxpx3 is not None, 'point_pos_bxpx3 not given'
+            assert pred_occ is not None, 'pred_occ not given for inference surface extraction'
+
+            condition = check_condition_f_base(tet_bxfx4x3, point_pos_bxpx3)
+
+            if pred_occ.dtype == torch.bool:
+                pred_occ = pred_occ.float()
+            else:
+                pred_occ = (pred_occ > inference_threshold).float()
+
+            pred_surface_face = self.get_boundary_index(
+                tet_face_bxfx3[0],
+                tet_face_tet_bx4fx2[0],
+                pred_occ
+            )
+
+            # In MRI inference there is no GT boundary.
+            # Use the predicted surface as the returned surface.
+            if boundary is None:
+                boundary = pred_surface_face
+
+            return (
+                amips_energy,
+                edge,
+                volume_variance,
+                sum_analytic_distance,
+                sum_normal_loss,
+                center_occ,
+                condition,
+                boundary,
+                pred_surface_face,
+                sum_chamfer_distance
+            )
+
+        return (
+            amips_energy,
+            edge,
+            volume_variance,
+            sum_analytic_distance,
+            sum_normal_loss,
+            center_occ,
+            boundary,
+            sum_chamfer_distance,
+            lap_v_loss
+        )
 
     def paste_occ(self, pred_tet_occ, condition):
         condition[condition < 0] = 0

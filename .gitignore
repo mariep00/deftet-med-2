@@ -128,3 +128,17 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# ADDED BY ME
+# Ignore generated meshes/geometries by default
+*.msh
+*.obj
+
+# HPC job outputs
+*.out
+*.err
+
+Output123/
+experiments/
+quartet/

@@ -91,7 +91,7 @@ class ParallelWrapper(nn.Module):
         return sdf_func_list
 
     def forward(self,
-                imgs,
+                imgs, # used for 2D images TODO: check 
                 init_tet_pos_bxnx3,
                 init_tet_bxfx4,
                 points,
@@ -109,9 +109,9 @@ class ParallelWrapper(nn.Module):
                 pred_threshold=0.4,
                 return_offset=False,
                 random_seed=1,
-                cam_pos=None,
-                cam_rot=None,
-                cam_proj=None
+                cam_pos=None, # used for 2D images TODO: check 
+                cam_rot=None, # used for 2D images TODO: check 
+                cam_proj=None # used for 2D images TODO: check 
                 ):
 
         sum_time = 0

@@ -29,12 +29,14 @@ from layers.pc_model import DeformableTetNetwork
 from dataloader import create_dataloader
 from utils.point_cloud_utils import iou as point_cloud_iou
 from utils.point_cloud_utils import f_score, chamfer_distance, chamfer_distance_l1, hausdorff_distance
+import meshio
 
 warnings.simplefilter("ignore", UserWarning)
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 SHORT_INFO = 'Deformable Grid'
 INFO = ''
-DEFAULT_FOLDER_PATH = os.path.join(ROOT_DIR, 'experiments')
+DEFAULT_FOLDER_PATH = '/work3/s233736/deftet_runs'
+# Bef: DEFAULT_FOLDER_PATH = os.path.join(ROOT_DIR, 'experiments')
 
 np.random.seed(1)
 torch.random.manual_seed(2)
@@ -166,7 +168,7 @@ class Engine(object):
         if self.config.use_lap_layer:
             load_path = os.path.join(pretrain_path, 'lap_decoder_pos.pth')
             load_dict = torch.load(load_path)
-            self.model.lap_decoder_pos.load_state_dict(load_dict)
+            self.model.lap_decoder_pos.load_state_dict(load_dict) 
 
     def validate_iou(self):
         self.model.eval()
@@ -292,7 +294,7 @@ class Engine(object):
                 ##########
 
                 if not self.timing and not (mesh_v.shape[0] == 0) and self.save:
-                    save_name = experiment.dir_path('eval_visualization_all_cat_chair')
+                    save_name = experiment.dir_path('eval_visualization_all_cat_new') ##TODO changed eval_visualization_all_cat_chair to without chair 
                     # print('==> Save for vis')
                     if self.smooth:
                         save_name = experiment.dir_path('eval_visualization_smooth')
@@ -302,10 +304,28 @@ class Engine(object):
                     if not os.path.exists(save_name):
                         os.makedirs(save_name)
 
-                    mesh_utils.save_mesh(
+                    '''mesh_utils.save_mesh(
                         mesh_v.data.cpu().numpy(), mesh_f.data.cpu().numpy(),
                         save_name + '/pred_occ_%.5f_%s.obj' % (tmp_f_score.mean().item(),
-                                                                   data['name'][0].split('/')[-1]))
+                                                                   data['name'][0].split('/')[-1]))'''
+
+
+                    '''# NEW: save the deformed tetrahedral mesh as OBJ (faces of all tets)
+                    inside_tet = (pred_occ_prob[0] > self.mesh_threshold)
+                    tet_obj_path = save_name + '/pred_tet_%s.obj' % (data['name'][0].split('/')[-1])
+                    mesh_utils.save_tetrahedron(
+                        tet_pos[0].data.cpu().numpy(),                 # ALL deformed tet vertices
+                        self.init_tet_fx4[inside_tet].data.cpu().numpy(),          # tet connectivity (Fx4)
+                        tet_obj_path
+                    )'''
+                    # NEW: save the deformed tetrahedral mesh as .npz
+                    inside_tet = (pred_occ_prob[0] > self.mesh_threshold)
+                    verts=tet_pos[0]
+                    tets=self.init_tet_fx4[inside_tet]
+                    tet_npz_path = os.path.join(save_name, f"pred_tet_{...}.npz")
+
+                    save_tet_npz(tet_npz_path, verts, tets)
+
 
         print('===> Results')
         with open(experiment.file_path('result_update.txt'), 'a') as f:
