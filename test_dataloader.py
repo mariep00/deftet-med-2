@@ -1,8 +1,15 @@
 import sys
 import torch
-sys.path.append("/Users/mariepicquet/thesis/deftet-med")
+from pathlib import Path
+
+repo_dir = Path(__file__).resolve().parent
+workspace_root = repo_dir.parent
+sys.path.append(str(repo_dir))
 
 from dataloader import create_dataloader
+
+mesh_surface_dir = workspace_root / "mesh_surfaces"
+cache_root = repo_dir / "dataset_cache" / "debug_run"
 
 print("CUDA available:", torch.cuda.is_available())
 print("CUDA device count:", torch.cuda.device_count())
@@ -10,11 +17,11 @@ print("CUDA device count:", torch.cuda.device_count())
 assert torch.cuda.is_available(), "No GPU detected. Run this on a GPU node."
 
 dl = create_dataloader(
-    shapenet_source="/work3/s233736/datasets/shapenetcore",
-    save_cache_root="/work3/s233736/deftet_runs/debug_run",
+    msh_source=str(mesh_surface_dir),
+    save_cache_root=str(cache_root),
     train=False,
     batch_size=1,
-    only_chairs=True,
+    only_chairs=False,
 )
 
 print("Dataloader created")
