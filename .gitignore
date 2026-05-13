@@ -142,3 +142,34 @@ dmypy.json
 Output123/
 experiments/
 quartet/
+
+# HPC outputs
+*.out
+*.err
+slurm-*.out
+
+# Logs and generated outputs
+logs/
+outputs/
+results/
+checkpoints/
+runs/
+
+# Scientific data and generated mesh files
+data/
+*.nii
+*.nii.gz
+*.npz
+*.msh
+*.obj
+*.stl
+*.tet
+
+# Local/private config
+.env
+*.local
+config.local.py
+
+# Editor/OS
+.DS_Store
+.vscode/
