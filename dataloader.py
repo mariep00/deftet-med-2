@@ -273,7 +273,8 @@ class SDFPoints:
 
 def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
                       save_cache_root = '/work3/s233736/deftet_runs/run_01',
-                      train=True, batch_size=1, add_occupancy=False, only_chairs=False): # Bef: train=True, batch_size=8, only_chairs=False
+                      train=True, batch_size=1, add_occupancy=False, only_chairs=False,
+                      val_count=2): # Bef: train=True, batch_size=8, only_chairs=False
     """
         Create full dataloader pipeline.
 
@@ -315,6 +316,26 @@ def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
         ds.paths.pop(idx)
         ds.synset_idxs.pop(idx)
         ds.names.pop(idx)
+
+    if val_count < 0:
+        raise ValueError(f'val_count must be non-negative, got {val_count}')
+    if val_count >= len(ds):
+        raise ValueError(
+            f'val_count={val_count} leaves no training meshes for dataset of size {len(ds)}'
+        )
+
+    if val_count > 0:
+        split_slice = slice(None, -val_count) if train else slice(-val_count, None)
+    else:
+        split_slice = slice(None)
+
+    ds.paths = ds.paths[split_slice]
+    ds.synset_idxs = ds.synset_idxs[split_slice]
+    ds.names = ds.names[split_slice]
+
+    split_name = 'train' if train else 'val'
+    print(f'==> Using {split_name} split with {len(ds.names)} meshes:')
+    print(ds.names)
 
     sv_dir = os.path.join(save_cache_root, 'watertight')
     if not os.path.exists(sv_dir):
@@ -374,10 +395,10 @@ def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
     dataloader = DataLoader(
         combined_dataset,
         batch_size=batch_size,
-        shuffle=True,
-        num_workers=8,
+        shuffle=train,
+        num_workers=4,
         collate_fn=collate_fn,
-        drop_last=True,
+        drop_last=train,
     )##### We always shuffle the data here
     return dataloader
 
