@@ -24,7 +24,7 @@ import torch
 import torch.nn as nn
 from utils.matrix_utils import MySparse
 from layers.pc_model import DeformableTetNetwork
-from vox_dataloader import create_dataloader
+from dataloader import create_dataloader
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_FOLDER_PATH = os.path.join(ROOT_DIR, 'experiments')
@@ -387,7 +387,7 @@ if __name__ == '__main__':
     args = get_parser()
     experiment = Experiment.load(args.experiment_path, options=OPTIONS)
     experiment.experiment_id = args.experiment_path.split('/')[-1]
-    experiment.config.dataset_dir = '/work3/s233736/datasets/MRI'  # TODO check if this is needed, should be in the saved config already
+    experiment.config.dataset_dir = '/work3/s233736/datasets/mesh_surfaces' #'/work3/s233736/datasets/MRI'  # TODO check if this is needed, should be in the saved config already
     experiment.root_path = os.path.join(DEFAULT_FOLDER_PATH, experiment.experiment_id)
     config = experiment.config
     main(experiment, config, args.experiment_path,
