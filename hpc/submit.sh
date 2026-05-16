@@ -16,7 +16,7 @@
 
 # ===== User config =====
 DATASET_DIR="/work3/s233736/datasets/mesh_surfaces"
-EXP_ID="mri12-5"   # change if you want a new run name
+EXP_ID="mri15-5"   # change if you want a new run name
 BATCH_SIZE=1 # chnaged from 8 
 RES=70
 PRINT_EVERY=10
