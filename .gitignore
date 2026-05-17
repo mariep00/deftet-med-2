@@ -177,4 +177,7 @@ config.local.py
 .DS_Store
 .vscode/
 
+experiments/*
+!experiments/**/
+!experiments/*.npz
 !experiments/**/*.npz
