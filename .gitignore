@@ -160,11 +160,13 @@ runs/
 data/
 *.nii
 *.nii.gz
-*.npz
 *.msh
 *.obj
 *.stl
 *.tet
+
+!*.npz
+
 
 # Local/private config
 .env
@@ -174,3 +176,5 @@ config.local.py
 # Editor/OS
 .DS_Store
 .vscode/
+
+!experiments/**/*.npz
