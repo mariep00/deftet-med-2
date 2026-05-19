@@ -17,6 +17,7 @@ This module builds a PyTorch DataLoader that:
 '''
 import kaolin as kal
 import torch
+import math
 import os
 import numpy as np
 from datetime import datetime
@@ -180,6 +181,41 @@ class MakeSurfaceMesh:
             return 'watertight_%s'%(str(datetime.now()))
         return 'watertight'
 
+
+class NormalizeExistingSurfaceMesh:
+    """
+    Normalize an already-watertight surface mesh without remeshing it.
+
+    The brain hemisphere .msh files are expected to already contain valid
+    triangle surface meshes, so this only centers and scales the geometry into
+    the same coordinate range used by the previous preprocessing path.
+    """
+
+    def __init__(self, max_length=0.9, save_preprocess=False):
+        self.max_length = max_length
+        self.save_preprocess = save_preprocess
+
+    def __call__(self, mesh):
+        vertices = mesh.vertices.float()
+        faces = mesh.faces.long()
+
+        extent = vertices.max(dim=0)[0] - vertices.min(dim=0)[0]
+        max_l = extent.max()
+        if max_l <= 0:
+            raise ValueError("Mesh has zero spatial extent and cannot be normalized.")
+
+        vertices = (vertices / max_l) * self.max_length
+        mid_p = (vertices.max(dim=0)[0] + vertices.min(dim=0)[0]) / 2
+        vertices = vertices - mid_p.unsqueeze(dim=0)
+
+        return vertices.cpu(), faces.cpu()
+
+    def __repr__(self):
+        if not self.save_preprocess:
+            return 'normalized_mesh_%s' % (str(datetime.now()))
+        return 'normalized_mesh'
+
+
 class SamplePointsFromMesh:
     """
     Sample a fixed number of points from the mesh surface. This produces a HOLLOW point cloud (surface only).
@@ -271,10 +307,114 @@ class SDFPoints:
         return 'sdf'
 
 
+class BrainHemisphereMeshAugmentor:
+    """
+    Apply consistent train-time rigid augmentation to a mesh batch.
+
+    Vertices, sampled surface points, and SDF query points are transformed
+    together so the geometric supervision remains aligned.
+    """
+
+    def __init__(
+        self,
+        rotate_deg=5.0,
+        translate=0.015,
+        scale_range=(0.97, 1.03),
+    ):
+        self.rotate_deg = float(rotate_deg)
+        self.translate = float(translate)
+        self.scale_range = scale_range
+
+    def __call__(self, data):
+        sample_points = data['sample_points'].float()
+        sdf_points = data['sdf_point'].float()
+
+        batch_size = sample_points.shape[0]
+        device = sample_points.device
+        dtype = sample_points.dtype
+
+        rotation = self._random_rotation(batch_size, device, dtype)
+        scale = torch.empty(batch_size, 1, 1, device=device, dtype=dtype).uniform_(
+            self.scale_range[0],
+            self.scale_range[1],
+        )
+        translation = torch.empty(batch_size, 1, 3, device=device, dtype=dtype).uniform_(
+            -self.translate,
+            self.translate,
+        )
+
+        def transform_batch(points):
+            points = torch.bmm(points, rotation.transpose(1, 2))
+            return points * scale + translation
+
+        def transform_one(points, idx):
+            points = points.float().to(device)
+            points = torch.matmul(points, rotation[idx].transpose(0, 1))
+            points = points * scale[idx, 0, 0] + translation[idx, 0]
+            return points.cpu()
+
+        data['sample_points'] = transform_batch(sample_points)
+        data['sdf_point'] = transform_batch(sdf_points)
+        data['verts'] = [
+            transform_one(verts, idx)
+            for idx, verts in enumerate(data['verts'])
+        ]
+
+        # SDF distances scale with uniform scale. Rotation and translation do
+        # not change the signed distance values.
+        sdf_scale = scale.squeeze(-1).to(data['sdf_value'].device)
+        data['sdf_value'] = data['sdf_value'].float() * sdf_scale
+
+        return data
+
+    def _random_rotation(self, batch_size, device, dtype):
+        if self.rotate_deg <= 0:
+            return torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(
+                batch_size,
+                1,
+                1,
+            )
+
+        max_angle = math.radians(self.rotate_deg)
+        angles = torch.empty(batch_size, 3, device=device, dtype=dtype).uniform_(
+            -max_angle,
+            max_angle,
+        )
+
+        cx, cy, cz = torch.cos(angles[:, 0]), torch.cos(angles[:, 1]), torch.cos(angles[:, 2])
+        sx, sy, sz = torch.sin(angles[:, 0]), torch.sin(angles[:, 1]), torch.sin(angles[:, 2])
+
+        rotation_x = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
+        rotation_y = torch.zeros_like(rotation_x)
+        rotation_z = torch.zeros_like(rotation_x)
+
+        rotation_x[:, 0, 0] = 1
+        rotation_x[:, 1, 1] = cx
+        rotation_x[:, 1, 2] = -sx
+        rotation_x[:, 2, 1] = sx
+        rotation_x[:, 2, 2] = cx
+
+        rotation_y[:, 0, 0] = cy
+        rotation_y[:, 0, 2] = sy
+        rotation_y[:, 1, 1] = 1
+        rotation_y[:, 2, 0] = -sy
+        rotation_y[:, 2, 2] = cy
+
+        rotation_z[:, 0, 0] = cz
+        rotation_z[:, 0, 1] = -sz
+        rotation_z[:, 1, 0] = sz
+        rotation_z[:, 1, 1] = cz
+        rotation_z[:, 2, 2] = 1
+
+        return torch.bmm(rotation_z, torch.bmm(rotation_y, rotation_x))
+
+
 def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
                       save_cache_root = '/work3/s233736/deftet_runs/run_01',
                       train=True, batch_size=1, add_occupancy=False, only_chairs=False,
-                      val_count=2): # Bef: train=True, batch_size=8, only_chairs=False
+                      val_count=2, augment=False, augment_rotate_deg=5.0,
+                      augment_translate=0.015,
+                      augment_scale_range=(0.97, 1.03)): # Bef: train=True, batch_size=8, only_chairs=False
     """
         Create full dataloader pipeline.
 
@@ -337,16 +477,31 @@ def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
     print(f'==> Using {split_name} split with {len(ds.names)} meshes:')
     print(ds.names)
 
-    sv_dir = os.path.join(save_cache_root, 'watertight')
-    if not os.path.exists(sv_dir):
-        os.makedirs(sv_dir)
+    # NOTE: Our brain hemisphere meshes are already watertight, so this
+    # watertight-remeshing step is not necessary for us. Keep this code here
+    # in case we later use non-watertight meshes.
+    # sv_dir = os.path.join(save_cache_root, 'watertight')
+    # if not os.path.exists(sv_dir):
+    #     os.makedirs(sv_dir)
+    #
+    # print('==> preprocess watertight mesh')
+    #
+    # # 1: watertight mesh
+    # watertight_mesh = kal.io.dataset.ProcessedDataset(
+    #     ds, MakeSurfaceMesh(100, 3, save_preprocess=True), num_workers=0,
+    #     cache_dir=sv_dir)
 
-    print('==> preprocess watertight mesh')
+    normalized_mesh_cache = os.path.join(save_cache_root, 'normalized_mesh')
+    if not os.path.exists(normalized_mesh_cache):
+        os.makedirs(normalized_mesh_cache)
 
-     # 1: watertight mesh
-    watertight_mesh = kal.io.dataset.ProcessedDataset(
-        ds, MakeSurfaceMesh(100, 3, save_preprocess=True), num_workers=0,
-        cache_dir=sv_dir)
+    print('==> normalize existing watertight surface mesh')
+    surface_mesh = kal.io.dataset.ProcessedDataset(
+        ds,
+        NormalizeExistingSurfaceMesh(max_length=0.9, save_preprocess=True),
+        num_workers=0,
+        cache_dir=normalized_mesh_cache,
+    )
 
 
     sv_dir = os.path.join(save_cache_root, 'pcd')
@@ -358,7 +513,7 @@ def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
 
     # 2: surface points
     processed_ds = kal.io.dataset.ProcessedDataset(
-        watertight_mesh, SamplePointsFromMesh(100000, with_normals=False, save_preprocess=True),
+        surface_mesh, SamplePointsFromMesh(100000, with_normals=False, save_preprocess=True),
         num_workers=0,
         cache_dir=sv_dir)
 
@@ -370,14 +525,22 @@ def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
 
     # 3: SDF samples
     occ_dataset = kal.io.dataset.ProcessedDataset(
-        watertight_mesh, SDFPoints(100000, save_preprocess=True),
+        surface_mesh, SDFPoints(100000, save_preprocess=True),
         num_workers=0,
         cache_dir=sv_dir)
     #########
 
 
-    combined_dataset = kal.io.dataset.CombinationDataset([watertight_mesh, processed_ds,
+    combined_dataset = kal.io.dataset.CombinationDataset([surface_mesh, processed_ds,
                                                           occ_dataset])
+
+    augmentor = None
+    if train and augment:
+        augmentor = BrainHemisphereMeshAugmentor(
+            rotate_deg=augment_rotate_deg,
+            translate=augment_translate,
+            scale_range=augment_scale_range,
+        )
 
     def collate_fn(batch_list):
         """Custom batching because meshes have variable size"""
@@ -390,6 +553,8 @@ def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
         data['synset'] = [da[1][0]['synset'] for da in batch_list]
         data['sdf_point'] = torch.cat([da[0][2][0].unsqueeze(dim=0) for da in batch_list], dim=0)
         data['sdf_value'] = torch.cat([da[0][2][1].unsqueeze(dim=0) for da in batch_list], dim=0)
+        if augmentor is not None:
+            data = augmentor(data)
         return data
 
     dataloader = DataLoader(
@@ -431,7 +596,5 @@ if __name__ == '__main__':
             cnt += 1
             if cnt > 100:
                 exit()
-
-
 
 
