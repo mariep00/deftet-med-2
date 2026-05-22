@@ -428,7 +428,7 @@ class Engine(object):
             'val_metrics': ['Chamfer'],
             'global_step': self.global_step,
         }
-        # Save the recent model/optimizer states
+        '''# Save the recent model/optimizer states
         prefix=''
         if not step is None:
             prefix = '_'+str(step)
@@ -445,7 +445,35 @@ class Engine(object):
                        self.experiment.file_path('recent_optim'+prefix+'.pth'))
 
         with open(self.experiment.file_path('recent.log'), 'w') as f:
-            f.write(json.dumps(log_table))
+            f.write(json.dumps(log_table))'''
+
+        # Always overwrite the latest checkpoint.
+        torch.save(
+            self.model.encoder.state_dict(),
+            self.experiment.file_path('recent_encoder.pth')
+        )
+
+        torch.save(
+            self.model.decoder_occ.state_dict(),
+            self.experiment.file_path('recent_decoder_occ.pth')
+        )
+
+        torch.save(
+            self.model.decoder_pos.state_dict(),
+            self.experiment.file_path('recent_decoder_pos.pth')
+        )
+
+        if self.config.use_lap_layer:
+            torch.save(
+                self.model.lap_decoder_pos.state_dict(),
+                self.experiment.file_path('recent_lap_decoder_pos.pth')
+            )
+
+        torch.save(
+            self.optimizer.state_dict(),
+            self.experiment.file_path('recent_optim.pth')
+        )
+
         print('====== Saved recent model ======>')
         if save_best:
             torch.save(self.model.encoder.state_dict(),
@@ -509,7 +537,7 @@ def main_worker(config, experiment):
         step = 5
     epoch = 0
     # trainer.validate_iou()
-    trainer.save(epoch * len(trainer.dataloader_train))
+    trainer.save()#epoch * len(trainer.dataloader_train))
     for epoch in range(epochs):
 
         trainer.train()
