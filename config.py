@@ -128,6 +128,12 @@ OPTIONS = {
         value=10000,
         help='Save frequency (batches).'
     ),
+    'save_val_surfaces_last_n': Option(
+        type=int,
+        value=0,
+        load_value=0,
+        help='Number of final validation runs to save predicted and GT surface OBJ files for'
+    ),
     'logdir': Option(
         type=str,
         value='log',

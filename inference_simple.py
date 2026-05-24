@@ -15,6 +15,7 @@ from config import OPTIONS
 from simple_parallel import SimpleParallelWrapper
 from utils.experiment import Experiment
 from utils import tet_utils
+from utils.mesh_utils import save_mesh
 import argparse
 import utils.dataloder_helper as helpers
 from layers.DefTet.deftet import DefTet
@@ -320,10 +321,6 @@ class Engine(object):
                 if not os.path.exists(save_name):
                     os.makedirs(save_name)
 
-                # TODO
-                # Resolved: this assert is still useful because faces are built by grouping every 3 vertices.
-                assert mesh_v.shape[0] % 3 == 0, 'mesh_v does not contain a multiple of 3 vertices'
-
                 base_name = data['name'][0].split('/')[-1]
                 print('Saving tet mesh')
                 print('  tet vertices:', tet_pos[0].shape)
@@ -345,6 +342,18 @@ class Engine(object):
                     faces=mesh_f.data.cpu().numpy(),
                     synset=np.array([data['synset'][0]]),
                     name=np.array([data['name'][0]])
+                )
+
+                save_mesh(
+                    mesh_v.detach().cpu().numpy(),
+                    mesh_f.detach().cpu().numpy(),
+                    os.path.join(save_name, base_name + '_pred_surface.obj'),
+                )
+
+                save_mesh(
+                    data['verts'][0].detach().cpu().numpy(),
+                    data['faces'][0].detach().cpu().numpy(),
+                    os.path.join(save_name, base_name + '_gt_surface.obj'),
                 )
 
 

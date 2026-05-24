@@ -13,6 +13,7 @@ from tensorboardX import SummaryWriter
 from utils.experiment import Experiment
 
 from utils import tet_utils
+from utils.mesh_utils import save_mesh
 import utils.dataloder_helper as helpers
 import json
 import kaolin as kal
@@ -318,7 +319,7 @@ class Engine(object):
         self.train_loss.append(loss_epoch)
         self.cur_epoch += 1
 
-    def validate_iou(self):
+    def validate_iou(self, save_surfaces=False):
         self.model.eval()
 
         with torch.no_grad():
@@ -349,7 +350,8 @@ class Engine(object):
                     0).expand(surface_point.shape[0], -1, -1)
 
                 amips_energy, edge, area_variance, surface_align, normal_loss, \
-                    occ_loss, occ_iou, lap, delta_loss, tet_pos, pred_occ_prob, condition, other_chamfer_distance= self.parallel(
+                    occ_loss, occ_iou, lap, delta_loss, tet_pos, pred_occ_prob, condition, \
+                    surface, pred_surface, other_chamfer_distance, _ = self.parallel(
                         imgs=imgs,
                         init_tet_pos_bxnx3=init_tet_pos_bxnx3,
                         init_tet_bxfx4=init_tet_bxfx4,
@@ -361,6 +363,7 @@ class Engine(object):
                         all_verts=all_verts,
                         all_faces=all_faces,
                         return_all=True,
+                        return_surf=True,
                         inference=True,
                         tet_face_bxfx3=init_tet_face_bxfx3,
                         cam_pos=cam_pos,
@@ -368,6 +371,39 @@ class Engine(object):
                         cam_proj=cam_proj,
                         pred_threshold=self.config.lap_threshold
                 )
+
+                if save_surfaces:
+                    surface_dir = self.experiment.dir_path(
+                        os.path.join(
+                            'validation_surfaces',
+                            f'epoch_{self.cur_epoch:04d}_step_{self.global_step:07d}',
+                        )
+                    )
+
+                    for sample_idx, name in enumerate(data['name']):
+                        base_name = os.path.basename(str(name))
+
+                        if pred_surface[sample_idx].shape[0] == 0:
+                            print(f'No validation surface extracted for {base_name}')
+                            continue
+
+                        pred_v = tet_pos[sample_idx, pred_surface[sample_idx].reshape(-1)]
+                        pred_f = torch.arange(
+                            pred_v.shape[0],
+                            device=pred_v.device,
+                            dtype=torch.long,
+                        ).reshape(-1, 3)
+
+                        save_mesh(
+                            pred_v.detach().cpu().numpy(),
+                            pred_f.detach().cpu().numpy(),
+                            os.path.join(surface_dir, f'{base_name}_pred.obj'),
+                        )
+                        save_mesh(
+                            data['verts'][sample_idx].detach().cpu().numpy(),
+                            data['faces'][sample_idx].detach().cpu().numpy(),
+                            os.path.join(surface_dir, f'{base_name}_gt.obj'),
+                        )
 
                 iou_epoch['surf'] += surface_align.mean().item()
                 iou_epoch['occ_iou'] += occ_iou.mean().item()
@@ -550,7 +586,17 @@ def main_worker(config, experiment):
         trainer.train()
         if epoch % step == 0 and epoch != 0:
             torch.cuda.empty_cache()
-            trainer.validate_iou()
+            total_validation_runs = (epochs - 1) // step
+            current_validation_run = epoch // step
+            first_saved_validation_run = max(
+                1,
+                total_validation_runs - config.save_val_surfaces_last_n + 1,
+            )
+            save_val_surfaces = (
+                config.save_val_surfaces_last_n > 0
+                and current_validation_run >= first_saved_validation_run
+            )
+            trainer.validate_iou(save_surfaces=save_val_surfaces)
             trainer.save(epoch * len(trainer.dataloader_train))
 
 if __name__ == '__main__':
