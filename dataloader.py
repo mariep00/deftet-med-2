@@ -410,7 +410,7 @@ class BrainHemisphereMeshAugmentor:
 
 
 def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
-                      save_cache_root = '/work3/s233736/deftet_runs/run_01',
+                      save_cache_root = '/work3/s233736/deftet_runs/run_01/dataset_cache',
                       train=True, batch_size=1, add_occupancy=False, only_chairs=False,
                       val_count=2, augment=False, augment_rotate_deg=5.0,
                       augment_translate=0.015,
@@ -596,5 +596,4 @@ if __name__ == '__main__':
             cnt += 1
             if cnt > 100:
                 exit()
-
 

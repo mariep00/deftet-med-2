@@ -500,16 +500,17 @@ def main(experiment, config, state):
 def main_worker(config, experiment):
     timing = None
     train_for_debug = False####
-    cache_root = experiment.dir_path('dataset_cache')
+    cache_root = '/work3/s233736/deftet_runs/run_01/dataset_cache'
 
     #dataloader_train = create_dataloader(batch_size=config.batch_size, only_chairs= train_for_debug)
     #dataloader_val = create_dataloader(batch_size=config.batch_size, train=False, only_chairs= train_for_debug)
     dataloader_train = create_dataloader(
-    msh_source=config.dataset_dir,
-    save_cache_root=os.path.join(cache_root, 'train'),
-    batch_size=config.batch_size,
-    train=True,
-    only_chairs=False,
+        msh_source=config.dataset_dir,
+        save_cache_root=os.path.join(cache_root, 'train'),
+        batch_size=config.batch_size,
+        train=True,
+        only_chairs=False,
+        augment=True,
     )
 
     dataloader_val = create_dataloader(
