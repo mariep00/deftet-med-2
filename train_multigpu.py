@@ -510,7 +510,13 @@ def main_worker(config, experiment):
         batch_size=config.batch_size,
         train=True,
         only_chairs=False,
-        augment=True,
+        augment=config.augment,
+        augment_rotate_deg=config.augment_rotate_deg,
+        augment_translate=config.augment_translate,
+        augment_scale_range=(
+            config.augment_scale_min,
+            config.augment_scale_max,
+        ),
     )
 
     dataloader_val = create_dataloader(

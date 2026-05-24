@@ -41,6 +41,36 @@ OPTIONS = {
         value='/work3/s233736/datasets/mesh_surfaces',
         help=''
     ),
+    'augment': Option(
+        type=bool,
+        value=True,
+        load_value=True,
+        help='Whether to apply train-time mesh augmentation'
+    ),
+    'augment_rotate_deg': Option(
+        type=float,
+        value=5.0,
+        load_value=5.0,
+        help='Maximum absolute rotation angle in degrees for train-time augmentation'
+    ),
+    'augment_translate': Option(
+        type=float,
+        value=0.015,
+        load_value=0.015,
+        help='Maximum absolute translation for train-time augmentation'
+    ),
+    'augment_scale_min': Option(
+        type=float,
+        value=0.97,
+        load_value=0.97,
+        help='Minimum uniform scale for train-time augmentation'
+    ),
+    'augment_scale_max': Option(
+        type=float,
+        value=1.03,
+        load_value=1.03,
+        help='Maximum uniform scale for train-time augmentation'
+    ),
     'use_all': Option(
         type=bool,
         value=False,
