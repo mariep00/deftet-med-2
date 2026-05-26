@@ -48,6 +48,7 @@ python train_multigpu.py \
   --print_every "$PRINT_EVERY" \
   --dataset_dir "$DATASET_DIR" \
   --save_vis_every 1000 \
+  --save_val_surfaces_last_n 10 \
   --no_use_pos_encoding \
   --no_use_vert_feat \
   --use_init_pos_mask \
