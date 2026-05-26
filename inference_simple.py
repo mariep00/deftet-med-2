@@ -218,143 +218,143 @@ class Engine(object):
 
     def inference(self):
         """
-        Run inference on a single validation sample.
+        Run inference on every validation sample.
         Minimal version: no metrics, only forward pass + mesh extraction + optional save.
         """
         self.model.eval()
         with torch.no_grad():
-            data = next(iter(self.dataloader_val))
+            for data in self.dataloader_val:
 
-            # ----------------------------------
-            # Input data
-            # ----------------------------------
-            cat = data['synset'][0]
+                # ----------------------------------
+                # Input data
+                # ----------------------------------
+                cat = data['synset'][0]
 
-            # Query points are still passed because ParallelWrapper expects them.
-            points = data['sdf_point'].float().to(self.config.device)
+                # Query points are still passed because ParallelWrapper expects them.
+                points = data['sdf_point'].float().to(self.config.device)
 
-            # Ground truth surface samples are also still passed because the wrapper expects them.
-            surface_point = data['sample_points'].float().to(self.config.device)
+                # Ground truth surface samples are also still passed because the wrapper expects them.
+                surface_point = data['sample_points'].float().to(self.config.device)
 
-            # Ground truth mesh vertices and faces.
-            # In the minimal script these are not used for metrics anymore,
-            # but ParallelWrapper may still expect them.
-            all_verts = [v.to(self.config.device).unsqueeze(0).expand(
-                self.device_count, -1, -1) for v in data['verts']]
-            all_faces = [v.to(self.config.device).unsqueeze(0).expand(
-                self.device_count, -1, -1) for v in data['faces']]
+                # Ground truth mesh vertices and faces.
+                # In the minimal script these are not used for metrics anymore,
+                # but ParallelWrapper may still expect them.
+                all_verts = [v.to(self.config.device).unsqueeze(0).expand(
+                    self.device_count, -1, -1) for v in data['verts']]
+                all_faces = [v.to(self.config.device).unsqueeze(0).expand(
+                    self.device_count, -1, -1) for v in data['faces']]
 
-            # ----------------------------------
-            # Prepare tetrahedral mesh (batched)
-            # ----------------------------------
-            # TODO what is meant by batched
-            # Resolved: batched means one copy of the initial tet grid per item in the batch.
-            # Since batch_size=1 here, this is just adding a batch dimension of size 1.
-            #
-            # TODO check range and make sure surface points are in the same range where does that happen
-            # Resolved: the centering of the tet grid happens here with `-0.5`.
-            # The matching data normalization happens upstream in the dataset / preprocessing code,
-            # not inside this script.
-            init_tet_pos_bxnx3 = self.init_tet_pos.float().unsqueeze(
-                0).expand(surface_point.shape[0], -1, -1)
+                # ----------------------------------
+                # Prepare tetrahedral mesh (batched)
+                # ----------------------------------
+                # TODO what is meant by batched
+                # Resolved: batched means one copy of the initial tet grid per item in the batch.
+                # Since batch_size=1 here, this is just adding a batch dimension of size 1.
+                #
+                # TODO check range and make sure surface points are in the same range where does that happen
+                # Resolved: the centering of the tet grid happens here with `-0.5`.
+                # The matching data normalization happens upstream in the dataset / preprocessing code,
+                # not inside this script.
+                init_tet_pos_bxnx3 = self.init_tet_pos.float().unsqueeze(
+                    0).expand(surface_point.shape[0], -1, -1)
 
-            # TODO make a test file and see why a batch per surface point
-            # Resolved: it is not one tet grid per surface point.
-            # `surface_point.shape[0]` is batch size, not number of sampled surface points.
-            init_tet_bxfx4 = self.init_tet_fx4.unsqueeze(
-                0).expand(surface_point.shape[0], -1, -1)
+                # TODO make a test file and see why a batch per surface point
+                # Resolved: it is not one tet grid per surface point.
+                # `surface_point.shape[0]` is batch size, not number of sampled surface points.
+                init_tet_bxfx4 = self.init_tet_fx4.unsqueeze(
+                    0).expand(surface_point.shape[0], -1, -1)
 
-            # Precomputed face-to-tet and face connectivity
-            tet_face_tetidx_bxfx2 = self.tet_face_tetidx_fx2.unsqueeze(
-                0).expand(surface_point.shape[0], -1, -1)
-            init_tet_face_bxfx3 = self.tet_face_fx3.unsqueeze(
-                0).expand(surface_point.shape[0], -1, -1)
+                # Precomputed face-to-tet and face connectivity
+                tet_face_tetidx_bxfx2 = self.tet_face_tetidx_fx2.unsqueeze(
+                    0).expand(surface_point.shape[0], -1, -1)
+                init_tet_face_bxfx3 = self.tet_face_fx3.unsqueeze(
+                    0).expand(surface_point.shape[0], -1, -1)
 
-            # ----------------------------------
-            # Forward pass through full pipeline
-            # ----------------------------------
-            # Outputs include many training/evaluation terms because ParallelWrapper returns them.
-            # We keep the call, but ignore the metric-like outputs.
-            #
-            # TODO can I remove cameras and unnecessary stuff
-            # Resolved: yes, because ParallelWrapper was simplified for point-cloud-only inference.
-            _, _, _, _, _, _, _, _, _, \
-            tet_pos, pred_occ_prob, _, _, pred_surface, _, _ = self.parallel(
-                    init_tet_pos_bxnx3=init_tet_pos_bxnx3,
-                    init_tet_bxfx4=init_tet_bxfx4,
-                    points=points,
-                    surface_point=surface_point,
-                    tet_face_tetidx_bxfx2=tet_face_tetidx_bxfx2,
-                    all_verts=all_verts,
-                    all_faces=all_faces,
-                    inference=True,
-                    return_surf=True,
-                    tet_face_bxfx3=init_tet_face_bxfx3,
-                    pred_threshold=0.5 if not self.config.use_lap_layer else self.config.lap_threshold,
-                    random_seed=0,
-            )
-
-            # ----------------------------------
-            # Extract predicted surface mesh
-            # ----------------------------------
-            mesh_v = tet_pos[0, pred_surface[0].reshape(-1)]
-            mesh_f = torch.arange(0, mesh_v.shape[0], device=mesh_v.device, dtype=torch.long).reshape(-1, 3)
-
-            # ----------------------------------
-            # Logging results
-            # ----------------------------------
-            print('Category:', cat)
-            print('Name:', data['name'][0])
-            print('tet vertices:', tet_pos[0].shape)
-            print('tets:', self.init_tet_fx4.shape)
-            print('surface vertices:', mesh_v.shape)
-            print('surface faces:', mesh_f.shape)
-            print('tet_occ:', pred_occ_prob[0].shape)
-
-            if mesh_v.shape[0] == 0:
-                print('No surface mesh was extracted.')
-                return
-
-            if self.save:
-                save_name = experiment.dir_path('minimal_inference_outputs')
-                save_name = os.path.join(save_name, data['synset'][0])
-                if not os.path.exists(save_name):
-                    os.makedirs(save_name)
-
-                base_name = data['name'][0].split('/')[-1]
-                print('Saving tet mesh')
-                print('  tet vertices:', tet_pos[0].shape)
-                print('  tets:', self.init_tet_fx4.shape)
-                print('  surface faces:', mesh_f.shape)
-                print('  tet_occ:', pred_occ_prob[0].shape)
-                print('  max tet index:', self.init_tet_fx4.max().item())
-                print('  num vertices:', tet_pos[0].shape[0])
-
-                # TODO actually I do not need all this info just keep the stuff without metrics
-                # Resolved: only saving the predicted tet grid, connectivity, tet occupancy,
-                # extracted surface vertices/faces, and identifiers.
-                np.savez_compressed(
-                    os.path.join(save_name, base_name + '.npz'),
-                    vertices=tet_pos[0].data.cpu().numpy(),
-                    tets=self.init_tet_fx4.data.cpu().numpy(),
-                    tet_occ=pred_occ_prob[0].data.cpu().numpy(),
-                    surf_vertices=mesh_v.data.cpu().numpy(),
-                    faces=mesh_f.data.cpu().numpy(),
-                    synset=np.array([data['synset'][0]]),
-                    name=np.array([data['name'][0]])
+                # ----------------------------------
+                # Forward pass through full pipeline
+                # ----------------------------------
+                # Outputs include many training/evaluation terms because ParallelWrapper returns them.
+                # We keep the call, but ignore the metric-like outputs.
+                #
+                # TODO can I remove cameras and unnecessary stuff
+                # Resolved: yes, because ParallelWrapper was simplified for point-cloud-only inference.
+                _, _, _, _, _, _, _, _, _, \
+                tet_pos, pred_occ_prob, _, _, pred_surface, _, _ = self.parallel(
+                        init_tet_pos_bxnx3=init_tet_pos_bxnx3,
+                        init_tet_bxfx4=init_tet_bxfx4,
+                        points=points,
+                        surface_point=surface_point,
+                        tet_face_tetidx_bxfx2=tet_face_tetidx_bxfx2,
+                        all_verts=all_verts,
+                        all_faces=all_faces,
+                        inference=True,
+                        return_surf=True,
+                        tet_face_bxfx3=init_tet_face_bxfx3,
+                        pred_threshold=0.5 if not self.config.use_lap_layer else self.config.lap_threshold,
+                        random_seed=0,
                 )
 
-                save_mesh(
-                    mesh_v.detach().cpu().numpy(),
-                    mesh_f.detach().cpu().numpy(),
-                    os.path.join(save_name, base_name + '_pred_surface.obj'),
-                )
+                # ----------------------------------
+                # Extract predicted surface mesh
+                # ----------------------------------
+                mesh_v = tet_pos[0, pred_surface[0].reshape(-1)]
+                mesh_f = torch.arange(0, mesh_v.shape[0], device=mesh_v.device, dtype=torch.long).reshape(-1, 3)
 
-                save_mesh(
-                    data['verts'][0].detach().cpu().numpy(),
-                    data['faces'][0].detach().cpu().numpy(),
-                    os.path.join(save_name, base_name + '_gt_surface.obj'),
-                )
+                # ----------------------------------
+                # Logging results
+                # ----------------------------------
+                print('Category:', cat)
+                print('Name:', data['name'][0])
+                print('tet vertices:', tet_pos[0].shape)
+                print('tets:', self.init_tet_fx4.shape)
+                print('surface vertices:', mesh_v.shape)
+                print('surface faces:', mesh_f.shape)
+                print('tet_occ:', pred_occ_prob[0].shape)
+
+                if mesh_v.shape[0] == 0:
+                    print('No surface mesh was extracted.')
+                    continue
+
+                if self.save:
+                    save_name = experiment.dir_path('minimal_inference_outputs')
+                    save_name = os.path.join(save_name, data['synset'][0])
+                    if not os.path.exists(save_name):
+                        os.makedirs(save_name)
+
+                    base_name = data['name'][0].split('/')[-1]
+                    print('Saving tet mesh')
+                    print('  tet vertices:', tet_pos[0].shape)
+                    print('  tets:', self.init_tet_fx4.shape)
+                    print('  surface faces:', mesh_f.shape)
+                    print('  tet_occ:', pred_occ_prob[0].shape)
+                    print('  max tet index:', self.init_tet_fx4.max().item())
+                    print('  num vertices:', tet_pos[0].shape[0])
+
+                    # TODO actually I do not need all this info just keep the stuff without metrics
+                    # Resolved: only saving the predicted tet grid, connectivity, tet occupancy,
+                    # extracted surface vertices/faces, and identifiers.
+                    np.savez_compressed(
+                        os.path.join(save_name, base_name + '.npz'),
+                        vertices=tet_pos[0].data.cpu().numpy(),
+                        tets=self.init_tet_fx4.data.cpu().numpy(),
+                        tet_occ=pred_occ_prob[0].data.cpu().numpy(),
+                        surf_vertices=mesh_v.data.cpu().numpy(),
+                        faces=mesh_f.data.cpu().numpy(),
+                        synset=np.array([data['synset'][0]]),
+                        name=np.array([data['name'][0]])
+                    )
+
+                    save_mesh(
+                        mesh_v.detach().cpu().numpy(),
+                        mesh_f.detach().cpu().numpy(),
+                        os.path.join(save_name, base_name + '_pred_surface.obj'),
+                    )
+
+                    save_mesh(
+                        data['verts'][0].detach().cpu().numpy(),
+                        data['faces'][0].detach().cpu().numpy(),
+                        os.path.join(save_name, base_name + '_gt_surface.obj'),
+                    )
 
 
 def main(experiment, config, model_path, save=False, step=0):
@@ -367,7 +367,17 @@ def main(experiment, config, model_path, save=False, step=0):
     # Resolved: the script assumes `vox_dataloader.create_dataloader(...)`
     # returns the same dictionary keys used below.
     # If it does not, this is the first place to debug.
-    dataloader_val = create_dataloader(batch_size=1, train=False, only_chairs=False)
+    cache_root = experiment.dir_path('dataset_cache/inference')
+    print('==> Mesh source:', config.dataset_dir)
+
+    dataloader_val = create_dataloader(
+        msh_source=config.dataset_dir,
+        save_cache_root=cache_root,
+        batch_size=1,
+        train=False,
+        only_chairs=False,
+        val_count=2,
+    )
 
     print('==> Init Engine')
     trainer = Engine(config=config,
