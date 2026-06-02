@@ -30,6 +30,7 @@ class DefTet(nn.Module):
         self.z_window_radius = 0.025
         self.inverse_v = None
 
+    #TODO: check volume Mri directly 
     def check_tet_inside_sdfs(self,
                               tet_bxfx4x3,
                               mesh_list):
