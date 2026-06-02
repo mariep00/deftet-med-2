@@ -18,7 +18,7 @@
 DATASET_DIR="/work3/s233736/datasets/mesh_surfaces"
 EXP_ID="mri15-5"   # change if you want a new run name
 BATCH_SIZE=1 # chnaged from 8 
-RES=70
+RES=100
 PRINT_EVERY=10
 
 # ===== Load CUDA (MANDATORY) =====
