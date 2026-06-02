@@ -52,6 +52,8 @@ def get_parser():
                         help='Checkpoint step to load, use 0 for default best checkpoint', default=0)
     parser.add_argument('--save', action='store_true',
                         help='Save predicted tet grid and surface mesh to an NPZ file', default=False)
+    parser.add_argument('--res', type=float, default=None,
+                        help='Override tetrahedral cube resolution at inference')
     return parser.parse_args()
 
 
@@ -409,5 +411,8 @@ if __name__ == '__main__':
     experiment.config.dataset_dir = '/work3/s233736/datasets/mesh_surfaces' #'/work3/s233736/datasets/MRI'  # TODO check if this is needed, should be in the saved config already
     experiment.root_path = os.path.join(DEFAULT_FOLDER_PATH, experiment.experiment_id)
     config = experiment.config
+    if args.res is not None:
+        config.res = args.res
+    print('Inference tetrahedral resolution:', config.res)
     main(experiment, config, args.experiment_path,
          save=args.save, step=args.step)
