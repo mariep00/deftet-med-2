@@ -54,6 +54,10 @@ def get_parser():
                         help='Save predicted tet grid and surface mesh to an NPZ file', default=False)
     parser.add_argument('--res', type=float, default=None,
                         help='Override tetrahedral cube resolution at inference')
+    parser.add_argument('--dataset_dir', type=str, default=None,
+                        help='Optional mesh dataset directory override')
+    parser.add_argument('--test_split_file', type=str, default=None,
+                        help='Optional held-out test split file override')
     return parser.parse_args()
 
 
@@ -371,6 +375,8 @@ def main(experiment, config, model_path, save=False, step=0):
     # If it does not, this is the first place to debug.
     cache_root = experiment.dir_path('dataset_cache/inference')
     print('==> Mesh source:', config.dataset_dir)
+    split_file = config.test_split_file or config.val_split_file or None
+    split_name = 'test' if config.test_split_file else 'val'
 
     dataloader_val = create_dataloader(
         msh_source=config.dataset_dir,
@@ -378,7 +384,10 @@ def main(experiment, config, model_path, save=False, step=0):
         batch_size=1,
         train=False,
         only_chairs=False,
+        split_file=split_file,
+        split_name=split_name,
         val_count=2,
+        num_workers=config.loader_workers,
     )
 
     print('==> Init Engine')
@@ -402,13 +411,16 @@ if __name__ == '__main__':
     # - get_parser() reads command line arguments
     # - Experiment.load(...) restores the saved experiment config/state
     # - experiment_id/root_path rebuild output directory structure
-    # - dataset_dir manually points the config to the dataset location
+    # - dataset_dir/test_split_file can be overridden from the command line
     # - main(...) runs model loading + one-sample inference
     torch.backends.cudnn.benchmark = True
     args = get_parser()
     experiment = Experiment.load(args.experiment_path, options=OPTIONS)
     experiment.experiment_id = args.experiment_path.split('/')[-1]
-    experiment.config.dataset_dir = '/work3/s233736/datasets/mesh_surfaces' #'/work3/s233736/datasets/MRI'  # TODO check if this is needed, should be in the saved config already
+    if args.dataset_dir is not None:
+        experiment.config.dataset_dir = args.dataset_dir
+    if args.test_split_file is not None:
+        experiment.config.test_split_file = args.test_split_file
     experiment.root_path = os.path.join(DEFAULT_FOLDER_PATH, experiment.experiment_id)
     config = experiment.config
     if args.res is not None:

@@ -41,6 +41,24 @@ OPTIONS = {
         value='/work3/s233736/datasets/mesh_surfaces',
         help=''
     ),
+    'train_split_file': Option(
+        type=str,
+        value='',
+        load_value='',
+        help='Optional text file listing mesh names for the training split'
+    ),
+    'val_split_file': Option(
+        type=str,
+        value='',
+        load_value='',
+        help='Optional text file listing mesh names for the validation split'
+    ),
+    'test_split_file': Option(
+        type=str,
+        value='',
+        load_value='',
+        help='Optional text file listing mesh names for the held-out test/inference split'
+    ),
     'augment': Option(
         type=bool,
         value=True,

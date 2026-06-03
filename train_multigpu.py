@@ -546,6 +546,9 @@ def main_worker(config, experiment):
         batch_size=config.batch_size,
         train=True,
         only_chairs=False,
+        split_file=config.train_split_file or None,
+        split_name='train',
+        num_workers=config.loader_workers,
         augment=config.augment,
         augment_rotate_deg=config.augment_rotate_deg,
         augment_translate=config.augment_translate,
@@ -561,6 +564,9 @@ def main_worker(config, experiment):
         batch_size=config.batch_size,
         train=False,
         only_chairs=False,
+        split_file=config.val_split_file or None,
+        split_name='val',
+        num_workers=config.loader_workers,
     )
 
     trainer = Engine(timing=timing,

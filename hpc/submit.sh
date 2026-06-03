@@ -15,7 +15,8 @@
 #BSUB -e Output_%J.err
 
 # ===== User config =====
-DATASET_DIR="/work3/s233736/datasets/mesh_surfaces"
+DATASET_DIR="/work3/s233736/datasets/mesh_surfaces_full"
+SPLIT_DIR="$HOME/thesis/deftet-med/splits/surfaces_80_10_10"
 EXP_ID="mri15-5"   # change if you want a new run name
 BATCH_SIZE=1 # chnaged from 8 
 RES=100
@@ -47,6 +48,9 @@ python train_multigpu.py \
   --batch_size "$BATCH_SIZE" \
   --print_every "$PRINT_EVERY" \
   --dataset_dir "$DATASET_DIR" \
+  --train_split_file "$SPLIT_DIR/train.txt" \
+  --val_split_file "$SPLIT_DIR/val.txt" \
+  --test_split_file "$SPLIT_DIR/test.txt" \
   --save_vis_every 1000 \
   --save_val_surfaces_last_n 10 \
   --no_use_pos_encoding \

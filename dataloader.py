@@ -26,14 +26,62 @@ import meshio
 from types import SimpleNamespace
 from torch.utils.data import Dataset
 
+#TODO: double see if i rly need to have the lh.white here or just .msh is enough 
+def _normalise_split_entry(entry):
+    entry = entry.split('#', 1)[0].strip()
+    if not entry:
+        return None
+
+    entry = entry.rstrip('/')
+    if entry.endswith('/lh.white'):
+        entry = os.path.dirname(entry)
+    elif entry.endswith('.lh.white'):
+        entry = entry[:-len('.lh.white')]
+    elif entry.endswith('.msh'):
+        entry = os.path.splitext(entry)[0]
+
+    return os.path.basename(entry)
+
+
+def read_split_file(split_file):
+    names = []
+    seen = set()
+    with open(split_file, 'r') as f:
+        for raw_line in f:
+            name = _normalise_split_entry(raw_line)
+            if name is None or name in seen:
+                continue
+            names.append(name)
+            seen.add(name)
+    return names
+
+
 class MSHDataset(Dataset):
-    def __init__(self, root):
+    def __init__(self, root, split_file=None):
         self.root = root
-        self.paths = sorted([
+        all_paths = sorted([
             os.path.join(root, f)
             for f in os.listdir(root)
             if f.endswith(".msh")
         ])
+        path_by_name = {
+            os.path.splitext(os.path.basename(p))[0]: p
+            for p in all_paths
+        }
+
+        if split_file is not None:
+            split_names = read_split_file(split_file)
+            missing = [name for name in split_names if name not in path_by_name]
+            if missing:
+                preview = ', '.join(missing[:10])
+                raise ValueError(
+                    f"{len(missing)} split entries from {split_file} are missing "
+                    f"from {root}. First missing entries: {preview}"
+                )
+            self.paths = [path_by_name[name] for name in split_names]
+        else:
+            self.paths = all_paths
+
         self.names = [
             os.path.splitext(os.path.basename(p))[0]
             for p in self.paths
@@ -414,7 +462,8 @@ def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
                       train=True, batch_size=1, add_occupancy=False, only_chairs=False,
                       val_count=2, augment=False, augment_rotate_deg=5.0,
                       augment_translate=0.015,
-                      augment_scale_range=(0.97, 1.03)): # Bef: train=True, batch_size=8, only_chairs=False
+                      augment_scale_range=(0.97, 1.03), split_file=None,
+                      split_name=None, num_workers=4): # Bef: train=True, batch_size=8, only_chairs=False
     """
         Create full dataloader pipeline.
 
@@ -447,34 +496,40 @@ def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
     # train_cat = ['02958343'] # car shape##########
     # ds = kal.io.shapenet.ShapeNetV1(root=shapenet_source, categories=train_cat,
                                     #with_materials=False, train=train)
-    ds = MSHDataset(msh_source)
+    ds = MSHDataset(msh_source, split_file=split_file)
 
     # Remove broken model
     error_model = ['04090263_4a32519f44dc84aabafe26e2eb69ebf4'] # This one has no mesh :(
     error_idx = [ds.names.index(e) for e in error_model if e in ds.names]
-    for idx in error_idx:
+    for idx in sorted(error_idx, reverse=True):
         ds.paths.pop(idx)
         ds.synset_idxs.pop(idx)
         ds.names.pop(idx)
 
-    if val_count < 0:
-        raise ValueError(f'val_count must be non-negative, got {val_count}')
-    if val_count >= len(ds):
-        raise ValueError(
-            f'val_count={val_count} leaves no training meshes for dataset of size {len(ds)}'
-        )
+    if split_file is None:
+        if val_count < 0:
+            raise ValueError(f'val_count must be non-negative, got {val_count}')
+        if val_count >= len(ds):
+            raise ValueError(
+                f'val_count={val_count} leaves no training meshes for dataset of size {len(ds)}'
+            )
 
-    if val_count > 0:
-        split_slice = slice(None, -val_count) if train else slice(-val_count, None)
-    else:
-        split_slice = slice(None)
+        if val_count > 0:
+            split_slice = slice(None, -val_count) if train else slice(-val_count, None)
+        else:
+            split_slice = slice(None)
 
-    ds.paths = ds.paths[split_slice]
-    ds.synset_idxs = ds.synset_idxs[split_slice]
-    ds.names = ds.names[split_slice]
+        ds.paths = ds.paths[split_slice]
+        ds.synset_idxs = ds.synset_idxs[split_slice]
+        ds.names = ds.names[split_slice]
 
-    split_name = 'train' if train else 'val'
-    print(f'==> Using {split_name} split with {len(ds.names)} meshes:')
+    if len(ds) == 0:
+        raise ValueError('Dataset split is empty.')
+
+    split_label = split_name or ('train' if train else 'val')
+    print(f'==> Using {split_label} split with {len(ds.names)} meshes:')
+    if split_file is not None:
+        print(f'==> Split file: {split_file}')
     print(ds.names)
 
     # NOTE: Our brain hemisphere meshes are already watertight, so this
@@ -561,7 +616,7 @@ def create_dataloader(msh_source='/work3/s233736/datasets/mesh_surfaces',
         combined_dataset,
         batch_size=batch_size,
         shuffle=train,
-        num_workers=4,
+        num_workers=num_workers,
         collate_fn=collate_fn,
         drop_last=train,
     )##### We always shuffle the data here
@@ -596,4 +651,3 @@ if __name__ == '__main__':
             cnt += 1
             if cnt > 100:
                 exit()
-
