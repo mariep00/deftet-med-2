@@ -24,7 +24,7 @@ EPOCHS=400
 PRINT_EVERY=10
 WANDB_ENTITY="s233736-danmarks-tekniske-universitet-dtu"
 WANDB_PROJECT="deftet-med"
-WANDB_MODE="${WANDB_MODE:-online}"
+WANDB_MODE="${WANDB_MODE:-offline}"
 WANDB_LOG_EVERY=10
 
 # ===== Load CUDA (MANDATORY) =====
@@ -44,6 +44,12 @@ export TORCH_EXTENSIONS_DIR="$HOME/.cache/torch_extensions"
 export OMP_NUM_THREADS="$LSB_DJOB_NUMPROC"
 
 cd ~/thesis/deftet-med || { echo "Project dir not found"; exit 1; }
+
+if [ "$WANDB_MODE" != "offline" ] && [ -z "${WANDB_API_KEY:-}" ]; then
+  echo "WANDB_API_KEY is not set. Run 'wandb login' on the HPC or export WANDB_API_KEY before submitting."
+  echo "For no-internet jobs, submit with: WANDB_MODE=offline bsub < hpc/submit.sh"
+  exit 1
+fi
 
 
 # ===== Run training =====
