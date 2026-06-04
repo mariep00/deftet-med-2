@@ -18,9 +18,14 @@
 DATASET_DIR="/work3/s233736/datasets/mesh_surfaces_full"
 SPLIT_DIR="$HOME/thesis/deftet-med/splits/surfaces_80_10_10"
 EXP_ID="mri15-5"   # change if you want a new run name
-BATCH_SIZE=1 # chnaged from 8 
+BATCH_SIZE=2 # chnaged from 8 
 RES=100
+EPOCHS=400
 PRINT_EVERY=10
+WANDB_ENTITY="s233736-danmarks-tekniske-universitet-dtu"
+WANDB_PROJECT="deftet-med"
+WANDB_MODE="${WANDB_MODE:-online}"
+WANDB_LOG_EVERY=10
 
 # ===== Load CUDA (MANDATORY) =====
 module load gcc/9.5.0-binutils-2.38
@@ -46,6 +51,7 @@ python train_multigpu.py \
   --pow 4 \
   --save_vis \
   --batch_size "$BATCH_SIZE" \
+  --epochs "$EPOCHS" \
   --print_every "$PRINT_EVERY" \
   --dataset_dir "$DATASET_DIR" \
   --train_split_file "$SPLIT_DIR/train.txt" \
@@ -71,6 +77,12 @@ python train_multigpu.py \
   --use_pvcnn_occ_decoder \
   --experiment_id "$EXP_ID" \
   --scale_pvcnn \
+  --wandb \
+  --wandb_entity "$WANDB_ENTITY" \
+  --wandb_project "$WANDB_PROJECT" \
+  --wandb_name "$EXP_ID" \
+  --wandb_mode "$WANDB_MODE" \
+  --wandb_log_every "$WANDB_LOG_EVERY" \
   --experiment_path "/work3/s233736/deftet_runs" 
 
   #changed from --save_vis_every 10000
