@@ -28,6 +28,11 @@ from datetime import datetime
 from utils.point_cloud_utils import iou as point_cloud_iou
 from tqdm import tqdm
 
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 SHORT_INFO = 'Deformable Grid'
 INFO = ''
@@ -52,6 +57,7 @@ class Engine(object):
         self.bestval = 0
         self.global_step = 0
         self.experiment = experiment
+        self.wandb_run = self.init_wandb()
 
         self.writer = SummaryWriter(
                 self.experiment.dir_path(
@@ -139,6 +145,34 @@ class Engine(object):
             self.parallel = nn.DataParallel(
                 self.parallel, device_ids=self.device_ids)
             print('Using mutiple GPUs: ', self.device_ids)
+
+    def init_wandb(self):
+        if not self.config.wandb:
+            return None
+
+        if wandb is None:
+            raise ImportError(
+                'wandb is not installed. Run `pip install wandb` or disable `--wandb`.'
+            )
+
+        run_name = self.config.wandb_name or self.config.experiment_id
+        return wandb.init(
+            entity=self.config.wandb_entity or None,
+            project=self.config.wandb_project,
+            name=run_name,
+            dir=self.experiment.root_path,
+            config=dict(vars(self.config)),
+            mode=self.config.wandb_mode,
+        )
+
+    def log_wandb(self, metrics):
+        if self.wandb_run is not None:
+            self.wandb_run.log(metrics, step=self.global_step)
+
+    def finish(self):
+        self.writer.close()
+        if self.wandb_run is not None:
+            self.wandb_run.finish()
 
     def weight_clip(self):
         torch.nn.utils.clip_grad_norm_(self.parameters, 40)
@@ -300,6 +334,25 @@ class Engine(object):
                 self.writer.add_scalar(
                     'lap_v_loss', lap_v_loss.mean().item(), self.global_step)
 
+            if (self.config.wandb_log_every > 0 and
+                    self.global_step % self.config.wandb_log_every == 0):
+                self.log_wandb({
+                    'train/loss_total': loss.item(),
+                    'train/loss_deform': deform_loss.item(),
+                    'train/loss_occ': occ_loss.item(),
+                    'train/area': area_variance.item(),
+                    'train/edge': edge.item(),
+                    'train/lap': lap.item(),
+                    'train/surf': surface_align.item(),
+                    'train/delta': delta_loss.item(),
+                    'train/normal': normal_loss.item(),
+                    'train/amips': amips.item(),
+                    'train/surf_chamfer': other_chamfer_distance.item(),
+                    'train/lap_v_loss': lap_v_loss.item(),
+                    'train/lr': self.get_optim().param_groups[0]['lr'],
+                    'epoch': self.cur_epoch,
+                })
+
             if (self.global_step % self.config.print_every == 0):
                 with torch.no_grad():
                     message = '[%s] [TRAIN] Epoch: %d, Batch: %d, Deform_loss: %.5f, Occ_loss: %.5f' % (
@@ -429,22 +482,31 @@ class Engine(object):
                 num_batches += 1
 
             max_iou = 0
+            wandb_metrics = {
+                'epoch': self.cur_epoch,
+            }
             for t in self.threshold_list:
                 out_loss = iou_epoch[t] / float(num_batches)
                 self.writer.add_scalar('val_iou_%.1f' %
                                        (t), out_loss, self.global_step)
+                wandb_metrics['val/iou_%.1f' % (t)] = out_loss
                 print(
                         f'[VAL IoU Total] Epoch {self.cur_epoch:03d}, Batch {i:03d} t: {t:1.1f}, iou: {out_loss:3.3f}')
                 max_iou = max(max_iou, out_loss)
 
 
             self.writer.add_scalar('val_iou_max', max_iou, self.global_step)
+            wandb_metrics['val/iou_max'] = max_iou
             show_list = ['surf', 'occ_iou', 'lap', 'edge', 'surf_chamfer',
                          'boundary', 'area', 'delta', 'amips', ]
             for show_name in show_list:
+                val_metric = iou_epoch[show_name] / float(num_batches)
                 self.writer.add_scalar(
-                    'val_' + show_name, iou_epoch[show_name] / float(num_batches), self.global_step)
-                print('val_' + show_name, iou_epoch[show_name] / float(num_batches))
+                    'val_' + show_name, val_metric, self.global_step)
+                wandb_metrics['val/' + show_name] = val_metric
+                print('val_' + show_name, val_metric)
+
+            self.log_wandb(wandb_metrics)
 
             self.val_loss.append(max_iou)
 
@@ -575,35 +637,38 @@ def main_worker(config, experiment):
                      dataloader_val=dataloader_val,
                      experiment=experiment)
 
-    epochs = config.epochs
-    if config.timing:
-        print('NOTE: Number of epochs has been set to 1 due to --timing')
-        epochs = 1
+    try:
+        epochs = config.epochs
+        if config.timing:
+            print('NOTE: Number of epochs has been set to 1 due to --timing')
+            epochs = 1
 
-    if config.use_lap_layer:
-        step = 1
-    else:
-        step = 5
-    epoch = 0
-    # trainer.validate_iou()
-    trainer.save()#epoch * len(trainer.dataloader_train))
-    for epoch in range(epochs):
+        if config.use_lap_layer:
+            step = 1
+        else:
+            step = 5
+        epoch = 0
+        # trainer.validate_iou()
+        trainer.save()#epoch * len(trainer.dataloader_train))
+        for epoch in range(epochs):
 
-        trainer.train()
-        if epoch % step == 0 and epoch != 0:
-            torch.cuda.empty_cache()
-            total_validation_runs = (epochs - 1) // step
-            current_validation_run = epoch // step
-            first_saved_validation_run = max(
-                1,
-                total_validation_runs - config.save_val_surfaces_last_n + 1,
-            )
-            save_val_surfaces = (
-                config.save_val_surfaces_last_n > 0
-                and current_validation_run >= first_saved_validation_run
-            )
-            trainer.validate_iou(save_surfaces=save_val_surfaces)
-            trainer.save(epoch * len(trainer.dataloader_train))
+            trainer.train()
+            if epoch % step == 0 and epoch != 0:
+                torch.cuda.empty_cache()
+                total_validation_runs = (epochs - 1) // step
+                current_validation_run = epoch // step
+                first_saved_validation_run = max(
+                    1,
+                    total_validation_runs - config.save_val_surfaces_last_n + 1,
+                )
+                save_val_surfaces = (
+                    config.save_val_surfaces_last_n > 0
+                    and current_validation_run >= first_saved_validation_run
+                )
+                trainer.validate_iou(save_surfaces=save_val_surfaces)
+                trainer.save(epoch * len(trainer.dataloader_train))
+    finally:
+        trainer.finish()
 
 if __name__ == '__main__':
     torch.backends.cudnn.benchmark = True

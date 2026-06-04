@@ -157,6 +157,42 @@ OPTIONS = {
         value='log',
         help='Directory to log data to.'
     ),
+    'wandb': Option(
+        type=bool,
+        value=False,
+        load_value=False,
+        help='Enable Weights & Biases logging.'
+    ),
+    'wandb_entity': Option(
+        type=str,
+        value='',
+        load_value='',
+        help='Weights & Biases entity/user/team name.'
+    ),
+    'wandb_project': Option(
+        type=str,
+        value='deftet-med',
+        load_value='deftet-med',
+        help='Weights & Biases project name.'
+    ),
+    'wandb_name': Option(
+        type=str,
+        value='',
+        load_value='',
+        help='Optional Weights & Biases run name.'
+    ),
+    'wandb_mode': Option(
+        type=str,
+        value='online',
+        load_value='online',
+        help='Weights & Biases mode: online, offline, or disabled.'
+    ),
+    'wandb_log_every': Option(
+        type=int,
+        value=10,
+        load_value=10,
+        help='Log training metrics to Weights & Biases every N steps.'
+    ),
     'save-model': Option(
         type=bool,
         value=True,
