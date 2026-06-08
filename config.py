@@ -13,6 +13,11 @@ OPTIONS = {
         value=False,
         help=''
     ),
+    'input_points': Option(
+        type=int,
+        value=0,
+        help='Number of surface points used by the point-cloud encoder; 0 chooses a resolution-based default.'
+    ),
     'loader_workers': Option(
         type=int,
         value=16,

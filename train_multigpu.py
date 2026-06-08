@@ -127,6 +127,12 @@ class Engine(object):
 
         self.experiment.dir_path('visualization')
 
+        if self.config.input_points > 0:
+            n_point = self.config.input_points
+        else:
+            n_point = 10000 if self.config.res >= 100 else 5000
+        print('==> Point encoder input points: %d' % n_point)
+
         self.parallel = ParallelWrapper(
             self.model,
             self.deftet,
@@ -136,7 +142,7 @@ class Engine(object):
             timing=timing,
             use_two_encoder=self.config.use_two_encoder,
             add_input_noise=self.config.add_input_noise,
-            n_point=5000 if self.config.res != 100 else 10000,
+            n_point=n_point,
             use_lap_layer=self.config.use_lap_layer,
             use_point=self.config.point_cloud)
 

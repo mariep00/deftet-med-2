@@ -22,6 +22,7 @@ BATCH_SIZE=2 # chnaged from 8
 RES=100
 EPOCHS=400
 VAL_EVERY=10
+INPUT_POINTS=10000
 PRINT_EVERY=10
 LOADER_WORKERS=8
 WANDB_ENTITY="s233736-danmarks-tekniske-universitet-dtu"
@@ -61,6 +62,7 @@ python train_multigpu.py \
   --batch_size "$BATCH_SIZE" \
   --epochs "$EPOCHS" \
   --val-every "$VAL_EVERY" \
+  --input_points "$INPUT_POINTS" \
   --print_every "$PRINT_EVERY" \
   --loader_workers "$LOADER_WORKERS" \
   --dataset_dir "$DATASET_DIR" \
