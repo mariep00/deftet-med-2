@@ -9,7 +9,7 @@
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -B
 #BSUB -N
-#BSUB -W 18:00
+#BSUB -W 48:00
 ##BSUB -u s233736@tu.dk
 #BSUB -o Output_%J.out
 #BSUB -e Output_%J.err
@@ -17,10 +17,11 @@
 # ===== User config =====
 DATASET_DIR="/work3/s233736/datasets/mesh_surfaces_full"
 SPLIT_DIR="$HOME/thesis/deftet-med/splits/surfaces_80_10_10"
-EXP_ID="mri15-5"   # change if you want a new run name
-BATCH_SIZE=2 # chnaged from 8 
-RES=100
-EPOCHS=400
+EXP_ID="surfacesres120"   # change if you want a new run name
+BATCH_SIZE=4 # chnaged from 8 
+RES=120
+EPOCHS=100
+LOADER_WORKERS=8
 VAL_EVERY=10
 INPUT_POINTS=10000
 PRINT_EVERY=10
@@ -69,7 +70,7 @@ python train_multigpu.py \
   --train_split_file "$SPLIT_DIR/train.txt" \
   --val_split_file "$SPLIT_DIR/val.txt" \
   --test_split_file "$SPLIT_DIR/test.txt" \
-  --save_vis_every 1000 \
+  --save_vis_every 5000 \
   --save_val_surfaces_last_n 10 \
   --no_use_pos_encoding \
   --no_use_vert_feat \
