@@ -224,7 +224,7 @@ class ConfigBuilder(object):
             if not option.command_line:
                 continue
 
-            value = getattr(args, name, None)
+            value = getattr(args, name.replace('-', '_'), None)
             if value is not None:
                 self.apply_entry(name, value)
 

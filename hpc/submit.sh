@@ -21,7 +21,9 @@ EXP_ID="mri15-5"   # change if you want a new run name
 BATCH_SIZE=2 # chnaged from 8 
 RES=100
 EPOCHS=400
+VAL_EVERY=10
 PRINT_EVERY=10
+LOADER_WORKERS=8
 WANDB_ENTITY="s233736-danmarks-tekniske-universitet-dtu"
 WANDB_PROJECT="deftet-med"
 WANDB_MODE="${WANDB_MODE:-offline}"
@@ -58,7 +60,9 @@ python train_multigpu.py \
   --save_vis \
   --batch_size "$BATCH_SIZE" \
   --epochs "$EPOCHS" \
+  --val-every "$VAL_EVERY" \
   --print_every "$PRINT_EVERY" \
+  --loader_workers "$LOADER_WORKERS" \
   --dataset_dir "$DATASET_DIR" \
   --train_split_file "$SPLIT_DIR/train.txt" \
   --val_split_file "$SPLIT_DIR/val.txt" \

@@ -646,7 +646,8 @@ def main_worker(config, experiment):
         if config.use_lap_layer:
             step = 1
         else:
-            step = 5
+            step = max(1, int(getattr(config, 'val-every', 5)))
+        print('==> Validation every %d epoch(s)' % step)
         epoch = 0
         # trainer.validate_iou()
         trainer.save()#epoch * len(trainer.dataloader_train))
