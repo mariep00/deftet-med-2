@@ -203,6 +203,7 @@ class Engine(object):
         loss_epoch = 0.
         num_batches = 0
         self.model.train()
+        self.parallel.training = True
 
         for i, data in enumerate(self.dataloader_train, 0):
             self.get_optim().zero_grad()
@@ -380,6 +381,8 @@ class Engine(object):
 
     def validate_iou(self, save_surfaces=False):
         self.model.eval()
+        # ParallelWrapper.forward uses this flag to make eval-time input noise deterministic.
+        self.parallel.training = False
 
         with torch.no_grad():
             num_batches = 0
@@ -401,12 +404,17 @@ class Engine(object):
 
                 init_tet_pos_bxnx3 = self.init_tet_pos.float().unsqueeze(
                     0).expand(surface_point.shape[0], -1, -1)
+                init_tet_pos_mask = self.init_pos_mask.float().unsqueeze(
+                    0).expand(surface_point.shape[0], -1, -1)
                 init_tet_bxfx4 = self.init_tet_fx4.unsqueeze(
                     0).expand(surface_point.shape[0], -1, -1)
                 tet_face_tetidx_bxfx2 = self.tet_face_tetidx_fx2.unsqueeze(
                     0).expand(surface_point.shape[0], -1, -1)
                 init_tet_face_bxfx3 = self.tet_face_fx3.unsqueeze(
                     0).expand(surface_point.shape[0], -1, -1)
+
+                if not self.config.use_init_pos_mask:
+                    init_tet_pos_mask = None
 
                 amips_energy, edge, area_variance, surface_align, normal_loss, \
                     occ_loss, occ_iou, lap, delta_loss, tet_pos, pred_occ_prob, condition, \
@@ -425,6 +433,7 @@ class Engine(object):
                         return_surf=True,
                         inference=True,
                         tet_face_bxfx3=init_tet_face_bxfx3,
+                        init_pos_mask=init_tet_pos_mask,
                         cam_pos=cam_pos,
                         cam_rot=cam_rot,
                         cam_proj=cam_proj,
