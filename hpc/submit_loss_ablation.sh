@@ -9,7 +9,7 @@
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -B
 #BSUB -N
-#BSUB -W 48:00
+#BSUB -W 20:00
 ##BSUB -u s233736@tu.dk
 #BSUB -o Output_%J.out
 #BSUB -e Output_%J.err
