@@ -482,6 +482,7 @@ class Engine(object):
                 iou_epoch['delta'] += delta_loss.mean().item()
                 iou_epoch['surf_chamfer'] += other_chamfer_distance.mean().item()
                 iou_epoch['amips'] += amips_energy.mean().item()
+                iou_epoch['normal'] += normal_loss.mean().item()
 
                 ######################
                 pred_points_occ_prob = self.deftet.paste_occ(
@@ -513,7 +514,7 @@ class Engine(object):
             self.writer.add_scalar('val_iou_max', max_iou, self.global_step)
             wandb_metrics['val/iou_max'] = max_iou
             show_list = ['surf', 'occ_iou', 'lap', 'edge', 'surf_chamfer',
-                         'boundary', 'area', 'delta', 'amips', ]
+                         'boundary', 'area', 'delta', 'amips', 'normal']
             for show_name in show_list:
                 val_metric = iou_epoch[show_name] / float(num_batches)
                 self.writer.add_scalar(
