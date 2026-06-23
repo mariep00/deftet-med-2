@@ -234,6 +234,13 @@ OPTIONS = {
         value=0,
         help='Weight for edge length loss'
     ),
+
+    'lambda_gamma': Option(
+        type=float,
+        value=1,
+        help='Weight for gamma mesh quality loss (0 = disabled)'
+    ),
+
     'lambda_delta': Option(
         type=float,
         value=10,

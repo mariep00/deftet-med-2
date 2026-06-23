@@ -18,10 +18,10 @@
 DATASET_DIR="${DATASET_DIR:-/work3/s233736/datasets/mesh_surfaces_crop_full}"
 SPLIT_DIR="${SPLIT_DIR:-$HOME/thesis/deftet-med/splits/surfaces_80_10_10}"
 ABLATION_VARIANT="${ABLATION_VARIANT:-loss00_recon_only}"
-BATCH_SIZE="${BATCH_SIZE:-2}"
-RES="${RES:-120}"
+BATCH_SIZE="${BATCH_SIZE:-1}"
+RES="${RES:-180}"
 EPOCHS="${EPOCHS:-100}"
-LOADER_WORKERS="${LOADER_WORKERS:-8}"
+LOADER_WORKERS="${LOADER_WORKERS:-4}"
 VAL_EVERY="${VAL_EVERY:-10}"
 INPUT_POINTS="${INPUT_POINTS:-10000}"
 PRINT_EVERY="${PRINT_EVERY:-10}"
@@ -46,6 +46,8 @@ LAMBDA_DELTA=0
 LAMBDA_AREA=0
 LAMBDA_AMIPS=0
 LAMBDA_NORMAL=0
+LAMBDA_GAMMA=0
+
 
 case "$ABLATION_VARIANT" in
   loss00_recon_only)
@@ -75,6 +77,14 @@ case "$ABLATION_VARIANT" in
     LAMBDA_AMIPS=1e-5
     LAMBDA_NORMAL=1e-2
     ;;
+  loss06_plus_gamma)
+    LAMBDA_LAP=1e-3
+    LAMBDA_DELTA=1e-3
+    LAMBDA_AREA=1
+    LAMBDA_AMIPS=1e-5
+    LAMBDA_NORMAL=1e-2
+    LAMBDA_GAMMA=1.0
+    ;;
   *)
     echo "Unknown ABLATION_VARIANT: $ABLATION_VARIANT"
     echo "Expected one of:"
@@ -84,6 +94,7 @@ case "$ABLATION_VARIANT" in
     echo "  loss03_plus_volume"
     echo "  loss04_plus_amips"
     echo "  loss05_plus_smooth"
+    echo "  loss06_plus_gamma"
     exit 1
     ;;
 esac
@@ -102,6 +113,7 @@ echo "    lambda_delta=$LAMBDA_DELTA"
 echo "    lambda_area=$LAMBDA_AREA"
 echo "    lambda_amips=$LAMBDA_AMIPS"
 echo "    lambda_normal=$LAMBDA_NORMAL"
+echo "    lambda_gamma=$LAMBDA_GAMMA"
 
 # ===== Load CUDA =====
 module load gcc/9.5.0-binutils-2.38
@@ -156,6 +168,7 @@ python train_multigpu.py \
   --lambda_area "$LAMBDA_AREA" \
   --lambda_amips "$LAMBDA_AMIPS" \
   --lambda_normal "$LAMBDA_NORMAL" \
+  --lambda_gamma "$LAMBDA_GAMMA" \
   --lambda_lap_v_loss "$LAMBDA_LAP_V_LOSS" \
   --res "$RES" \
   --no_expand_boundary \

@@ -165,6 +165,8 @@ class DefTet(nn.Module):
         )
         edge = self.edge_length(tet_bxfx4x3, pow=self.pow)
 
+        gamma = self.gamma_loss(tet_bxfx4x3)
+
         # Default dummy metric values for inference without GT mesh.
         sum_chamfer_distance = torch.zeros(
             vertice_pos.shape[0],
@@ -264,7 +266,7 @@ class DefTet(nn.Module):
             return (
                 amips_energy,
                 edge,
-                volume_variance,
+                gamma,
                 sum_analytic_distance,
                 sum_normal_loss,
                 center_occ,
@@ -277,6 +279,7 @@ class DefTet(nn.Module):
         return (
             amips_energy,
             edge,
+            gamma,
             volume_variance,
             sum_analytic_distance,
             sum_normal_loss,
@@ -473,6 +476,144 @@ class DefTet(nn.Module):
         offset_vec = torch.cat([B - A, C - A, D - A], dim=2)
         inverse_v = self.my_inverse(offset_vec.squeeze())[0]
         return inverse_v
+    def gamma_loss(self, tet_bxfx4x3):
+        '''Mesh quality loss based on the Gamma (γ) metric.
+
+        γ = 3 * r_in / r_c
+
+        where:
+        r_in = inradius   (radius of the sphere inscribed inside the tetrahedron,
+                            tangent to all 4 faces)
+        r_c  = circumradius (radius of the sphere passing through all 4 vertices)
+
+        For a perfect regular tetrahedron:  γ = 1  (r_c = 3 * r_in exactly)
+        For a degenerate/sliver element:    γ → 0  (r_c >> r_in)
+
+        The loss is mean(1 - γ), so:
+        - a batch of perfect tetrahedra  → loss = 0
+        - a batch of sliver tetrahedra   → loss → 1
+
+        Args:
+            tet_bxfx4x3: Tensor of shape (B, F, 4, 3)
+                        B = batch size
+                        F = number of tetrahedra
+                        4 = vertices per tetrahedron
+                        3 = x, y, z coordinates
+
+        Returns:
+            loss: Tensor of shape (B,) — one scalar per batch element'''
+
+        # Unpack the 4 vertices of each tetrahedron.
+        # Each has shape (B, F, 3).
+        A = tet_bxfx4x3[:, :, 0, :]
+        B = tet_bxfx4x3[:, :, 1, :]
+        C = tet_bxfx4x3[:, :, 2, :]
+        D = tet_bxfx4x3[:, :, 3, :]
+
+        n_batch, n_tet = A.shape[:2]
+
+        # ── Step 1: Volume ────────────────────────────────────────────────────────
+        #
+        # The signed volume of a tetrahedron with one vertex at A is:
+        #
+        #   V = det([B-A, C-A, D-A]) / 6
+        #
+        # We take the absolute value because the sign just reflects vertex ordering
+        # (winding), not a real inversion — at least for the quality metric.
+        # (The AMIPS loss separately penalises inverted elements.)
+        #
+        # We reshape to (-1, 3, 3) to run torch.linalg.det over all tets at once,
+        # then reshape back to (B, F).
+
+        m = torch.stack([B - A, C - A, D - A], dim=-1)  # (B, F, 3, 3)
+        V = torch.abs(torch.linalg.det(m.reshape(-1, 3, 3))) / 6.0  # (B*F,)
+        V = V.reshape(n_batch, n_tet)                                # (B, F)
+
+        # ── Step 2: Face areas ────────────────────────────────────────────────────
+        #
+        # A tetrahedron has 4 triangular faces.  The area of triangle (P, Q, R) is:
+        #
+        #   area = 0.5 * || (Q - P) × (R - P) ||
+        #
+        # The inradius formula needs the *total surface area* S = S1 + S2 + S3 + S4.
+
+        def tri_area(p, q, r):
+            # cross product gives a vector perpendicular to the face;
+            # its magnitude equals the parallelogram area, so half = triangle area.
+            return 0.5 * torch.norm(torch.cross(q - p, r - p, dim=-1), dim=-1)
+
+        # The 4 faces are (A,B,C), (A,B,D), (A,C,D), (B,C,D).
+        S = tri_area(A, B, C) + tri_area(A, B, D) + tri_area(A, C, D) + tri_area(B, C, D)
+        # S has shape (B, F)
+
+        # ── Step 3: Inradius ──────────────────────────────────────────────────────
+        #
+        # The inscribed sphere touches all 4 faces.  Its radius is:
+        #
+        #   r_in = 3 * V / S
+        #
+        # Intuition: think of the tetrahedron as 4 sub-pyramids, each with apex at
+        # the incentre and base = one face.  Their volumes must sum to V:
+        #   V = (1/3) * r_in * S  →  r_in = 3V / S
+        #
+        # We add 1e-8 to avoid division by zero for collapsed/flat elements.
+
+        r_in = 3.0 * V / (S + 1e-8)    # (B, F)
+
+        # ── Step 4: Circumradius ──────────────────────────────────────────────────
+        #
+        # The circumscribed sphere passes through all 4 vertices.
+        # Its centre P satisfies:  |P - A|² = |P - B|² = |P - C|² = |P - D|²
+        #
+        # Expanding |P - A|² = |P - B|²:
+        #   P·P - 2A·P + |A|² = P·P - 2B·P + |B|²
+        #   2(B - A)·P = |B|² - |A|²
+        #
+        # Doing this for pairs (A,B), (A,C), (A,D) gives a 3×3 linear system:
+        #
+        #   [ 2(B-A) ]         [ |B|² - |A|² ]
+        #   [ 2(C-A) ]  · P =  [ |C|² - |A|² ]
+        #   [ 2(D-A) ]         [ |D|² - |A|² ]
+        #
+        #   i.e.  lhs · P = rhs
+
+        # lhs: shape (B, F, 3, 3) — each row is one edge-difference vector
+        lhs = 2.0 * torch.stack([B - A, C - A, D - A], dim=2)  # (B, F, 3, 3)
+
+        # rhs: shape (B, F, 3) — squared-norm differences
+        rhs = torch.stack([
+            (B * B).sum(-1) - (A * A).sum(-1),   # |B|² - |A|²
+            (C * C).sum(-1) - (A * A).sum(-1),   # |C|² - |A|²
+            (D * D).sum(-1) - (A * A).sum(-1),   # |D|² - |A|²
+        ], dim=2)   # (B, F, 3)
+
+        # Solve the system for P (circumcentre).
+        # We flatten to (B*F, 3, 3) and (B*F, 3, 1) to use batched torch.linalg.solve,
+        # then reshape back.
+        P = torch.linalg.solve(
+            lhs.reshape(-1, 3, 3),
+            rhs.reshape(-1, 3).unsqueeze(-1)   # column vector
+        ).squeeze(-1).reshape(n_batch, n_tet, 3)   # (B, F, 3)
+
+        # Circumradius = distance from circumcentre P to any vertex (we use A).
+        # 1e-8 guards against numerically zero distance in degenerate cases.
+        r_c = torch.norm(P - A, dim=-1) + 1e-8    # (B, F)
+
+        # ── Step 5: Gamma and loss ────────────────────────────────────────────────
+        #
+        # γ = 3 * r_in / r_c
+        #
+        # For a regular tetrahedron r_c = 3 * r_in, so γ = 1.
+        # For a sliver, r_c >> r_in, so γ → 0.
+        #
+        # We clamp to [0, 1] to be safe against any numerical overshoot
+        # (e.g. nearly-inverted tets during early training).
+        #
+        # Loss = mean(1 - γ) over all tetrahedra in each batch element.
+        # Minimising this pushes all elements toward γ = 1.
+
+        gamma = (3.0 * r_in / r_c).clamp(0.0, 1.0)   # (B, F)
+        return (1.0 - gamma).mean(dim=-1)              # (B,)
 
     def edge_length(self, tet_bxfx4x3, pow=2):
         if pow == 4:

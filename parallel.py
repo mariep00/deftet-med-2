@@ -177,7 +177,7 @@ class ParallelWrapper(nn.Module):
             print('Offset Pos: ', tet_pos[-1].max(dim=0)[0])
 
         if inference:
-            amips_energy, edge, area_variance, surface_align, normal_loss, center_occ, \
+            amips_energy, edge, gamma, area_variance, surface_align, normal_loss, center_occ, \
                 condition, surface, pred_surface, other_chamfer_distance \
                 = self.deftet.forward_surface_align(
                     tet_pos,
@@ -196,7 +196,7 @@ class ParallelWrapper(nn.Module):
                     )
             lap_v_loss = torch.zeros_like(amips_energy)
         else:
-            amips_energy, edge, area_variance,  surface_align, normal_loss, center_occ, \
+            amips_energy, edge, gamma, area_variance,  surface_align, normal_loss, center_occ, \
             surface, other_chamfer_distance, lap_v_loss \
                 = self.deftet.forward_surface_align(
                     tet_pos,
@@ -250,6 +250,7 @@ class ParallelWrapper(nn.Module):
             if return_surf:
                 return amips_energy, \
                     edge, \
+                    gamma, \
                     area_variance, \
                     surface_align,\
                     normal_loss,\
@@ -264,6 +265,7 @@ class ParallelWrapper(nn.Module):
 
             return amips_energy,\
                 edge,\
+                gamma,\
                 area_variance,\
                 surface_align,\
                 normal_loss,\
@@ -278,6 +280,7 @@ class ParallelWrapper(nn.Module):
         if not return_all:
             return amips_energy,\
                 edge,\
+                gamma,\
                 area_variance,\
                 surface_align,\
                 normal_loss,\
@@ -287,6 +290,7 @@ class ParallelWrapper(nn.Module):
 
         return amips_energy,\
             edge,\
+            gamma,\
             area_variance,\
             surface_align,\
             normal_loss,\

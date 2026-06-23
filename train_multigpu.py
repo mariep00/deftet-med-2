@@ -239,7 +239,7 @@ class Engine(object):
                 init_tet_pos_mask = None
 
             if not save:
-                amips_energy, edge, area_variance, surface_align, normal_loss, \
+                amips_energy, edge, gamma, area_variance, surface_align, normal_loss, \
                 occ_loss, lap, delta_loss, other_chamfer_distance, lap_v_loss = self.parallel(
                     imgs=imgs,
                     init_tet_pos_bxnx3=init_tet_pos_bxnx3,
@@ -260,7 +260,7 @@ class Engine(object):
                 pred_threshold=self.config.lap_threshold)
 
             else:
-                amips_energy, edge, area_variance,  surface_align, normal_loss, \
+                amips_energy, edge, gamma, area_variance,  surface_align, normal_loss, \
                 occ_loss, lap, delta_loss, tet_pos, z, encoding_occ, pred_points_occ_prob, gt_occ, other_chamfer_distance, \
                 latent, lap_v_loss = self.parallel(
                     imgs=imgs,
@@ -286,6 +286,7 @@ class Engine(object):
             area_variance = area_variance.mean()
             normal_loss = normal_loss.mean()
             edge = edge.mean()
+            gamma = gamma.mean()
             amips = amips_energy.mean()
             other_chamfer_distance = other_chamfer_distance.mean()
             lap_v_loss = lap_v_loss.mean()
@@ -296,6 +297,7 @@ class Engine(object):
 
             deform_loss = area_variance * self.config.lambda_area + \
                           edge * self.config.lambda_edge + \
+                          gamma * self.config.lambda_gamma + \
                           lap * self.config.lambda_lap + \
                           surface_align * self.config.lambda_surf + \
                           delta_loss * self.config.lambda_delta + \
@@ -325,6 +327,8 @@ class Engine(object):
                     'volumn', area_variance.item(), self.global_step)
                 self.writer.add_scalar(
                     'edge_lenth', edge.item(), self.global_step)
+                self.writer.add_scalar(
+                    'gamma', gamma.item(), self.global_step)
                 self.writer.add_scalar('lap', lap.item(), self.global_step)
                 self.writer.add_scalar(
                     'surf', surface_align.item(), self.global_step)
@@ -349,6 +353,7 @@ class Engine(object):
                     'train/loss_occ': occ_loss.item(),
                     'train/area': area_variance.item(),
                     'train/edge': edge.item(),
+                    'train/gamma': gamma.item(),
                     'train/lap': lap.item(),
                     'train/surf': surface_align.item(),
                     'train/delta': delta_loss.item(),
@@ -364,8 +369,8 @@ class Engine(object):
                 with torch.no_grad():
                     message = '[%s] [TRAIN] Epoch: %d, Batch: %d, Deform_loss: %.5f, Occ_loss: %.5f' % (
                         datetime.now(), self.cur_epoch, i, deform_loss.item(), occ_loss.item())
-                    message += ' Volume: %.20f, Edge: %.10f, Lap: %.5f, Delta: %.5f, Surf: %.5f, Surf Chamfer: %.5f' % (
-                        area_variance.item(), edge.item(), lap.item(), delta_loss.item(), surface_align.item(),
+                    message += ' Volume: %.20f, Edge: %.10f, Gamma: %.5f, Lap: %.5f, Delta: %.5f, Surf: %.5f, Surf Chamfer: %.5f' % (
+                        area_variance.item(), edge.item(), gamma.item(), lap.item(), delta_loss.item(), surface_align.item(),
                         other_chamfer_distance.mean().item())
                     message += ' Normal: %.5f' % (normal_loss.item())
                     message += ' AMIPS: %.5f' % (amips.item())
@@ -416,7 +421,7 @@ class Engine(object):
                 if not self.config.use_init_pos_mask:
                     init_tet_pos_mask = None
 
-                amips_energy, edge, area_variance, surface_align, normal_loss, \
+                amips_energy, edge, gamma, area_variance, surface_align, normal_loss, \
                     occ_loss, occ_iou, lap, delta_loss, tet_pos, pred_occ_prob, condition, \
                     surface, pred_surface, other_chamfer_distance, _ = self.parallel(
                         imgs=imgs,
@@ -477,6 +482,7 @@ class Engine(object):
                 iou_epoch['occ_iou'] += occ_iou.mean().item()
                 iou_epoch['lap'] += lap.mean().item()
                 iou_epoch['edge'] += edge.mean().item()
+                iou_epoch['gamma'] += gamma.mean().item()
 
                 iou_epoch['area'] += area_variance.mean().item()
                 iou_epoch['delta'] += delta_loss.mean().item()
@@ -513,7 +519,7 @@ class Engine(object):
 
             self.writer.add_scalar('val_iou_max', max_iou, self.global_step)
             wandb_metrics['val/iou_max'] = max_iou
-            show_list = ['surf', 'occ_iou', 'lap', 'edge', 'surf_chamfer',
+            show_list = ['surf', 'occ_iou', 'lap', 'edge', 'gamma', 'surf_chamfer',
                          'boundary', 'area', 'delta', 'amips', 'normal']
             for show_name in show_list:
                 val_metric = iou_epoch[show_name] / float(num_batches)
@@ -614,7 +620,8 @@ def main(experiment, config, state):
 def main_worker(config, experiment):
     timing = None
     train_for_debug = False####
-    cache_root = '/work3/s233736/deftet_runs/run_01/dataset_cache'
+    cache_root = cache_root = experiment.dir_path('dataset_cache')
+
 
     #dataloader_train = create_dataloader(batch_size=config.batch_size, only_chairs= train_for_debug)
     #dataloader_val = create_dataloader(batch_size=config.batch_size, train=False, only_chairs= train_for_debug)
