@@ -1,15 +1,15 @@
 #!/bin/sh
 # ===== LSF options =====
 #BSUB -J deftet_loss_ablation
-#BSUB -q gpuv100
+#BSUB -q gpua100
 #BSUB -n 8
 #BSUB -R "span[hosts=1]"
-#BSUB -R "rusage[mem=6GB]"
-#BSUB -M 7GB
+#BSUB -R "rusage[mem=8GB]"
+#BSUB -M 9GB
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -B
 #BSUB -N
-#BSUB -W 24:00
+#BSUB -W 72:00
 ##BSUB -u s233736@tu.dk
 #BSUB -o Output_%J.out
 #BSUB -e Output_%J.err
@@ -128,7 +128,7 @@ export CC="$(which gcc)"
 export CXX="$(which g++)"
 export CUDAHOSTCXX="$(which g++)"
 export TORCH_EXTENSIONS_DIR="$HOME/.cache/torch_extensions"
-export OMP_NUM_THREADS="$LSB_DJOB_NUMPROC"
+export OMP_NUM_THREADS=4
 
 cd ~/thesis/deftet-med || { echo "Project dir not found"; exit 1; }
 

@@ -267,6 +267,7 @@ class DefTet(nn.Module):
                 amips_energy,
                 edge,
                 gamma,
+                volume_variance,
                 sum_analytic_distance,
                 sum_normal_loss,
                 center_occ,
