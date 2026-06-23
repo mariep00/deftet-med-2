@@ -9,16 +9,16 @@
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -B
 #BSUB -N
-#BSUB -W 30:00
+#BSUB -W 24:00
 ##BSUB -u s233736@tu.dk
 #BSUB -o Output_%J.out
 #BSUB -e Output_%J.err
 
 # ===== User config =====
-DATASET_DIR="${DATASET_DIR:-/work3/s233736/datasets/mesh_surfaces_full}"
+DATASET_DIR="${DATASET_DIR:-/work3/s233736/datasets/mesh_surfaces_crop_full}"
 SPLIT_DIR="${SPLIT_DIR:-$HOME/thesis/deftet-med/splits/surfaces_80_10_10}"
 ABLATION_VARIANT="${ABLATION_VARIANT:-loss00_recon_only}"
-BATCH_SIZE="${BATCH_SIZE:-4}"
+BATCH_SIZE="${BATCH_SIZE:-2}"
 RES="${RES:-120}"
 EPOCHS="${EPOCHS:-100}"
 LOADER_WORKERS="${LOADER_WORKERS:-8}"
