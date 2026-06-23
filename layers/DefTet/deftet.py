@@ -267,6 +267,7 @@ class DefTet(nn.Module):
                 amips_energy,
                 edge,
                 gamma,
+                volume_variance,
                 sum_analytic_distance,
                 sum_normal_loss,
                 center_occ,
@@ -590,8 +591,10 @@ class DefTet(nn.Module):
         # Solve the system for P (circumcentre).
         # We flatten to (B*F, 3, 3) and (B*F, 3, 1) to use batched torch.linalg.solve,
         # then reshape back.
+        lhs_flat = lhs.reshape(-1, 3, 3)
+        lhs_flat = lhs_flat + 1e-6 * torch.eye(3, device=lhs_flat.device, dtype=lhs_flat.dtype).unsqueeze(0)
         P = torch.linalg.solve(
-            lhs.reshape(-1, 3, 3),
+            lhs_flat,
             rhs.reshape(-1, 3).unsqueeze(-1)   # column vector
         ).squeeze(-1).reshape(n_batch, n_tet, 3)   # (B, F, 3)
 
